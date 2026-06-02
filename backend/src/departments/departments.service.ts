@@ -7,30 +7,20 @@ import { Department } from './department.entity';
 export class DepartmentsService {
   constructor(
     @InjectRepository(Department)
-    private departmentRepo: Repository<Department>,
+    private departmentRepository: Repository<Department>,
   ) {}
 
   async findAll(): Promise<Department[]> {
-    return await this.departmentRepo.find();
+    return this.departmentRepository.find({ where: { is_active: true } });
   }
 
-  async findOne(id: string): Promise<Department> {
-    const department = await this.departmentRepo.findOne({ where: { id } });
-    if (!department) throw new NotFoundException('Department not found');
+  async create(createDeptDto: any): Promise<Department> {
+    const result = await this.departmentRepository.insert(createDeptDto);
+    const id = result.identifiers[0].id;
+    const department = await this.departmentRepository.findOne({ where: { id } });
+    if (!department) {
+      throw new NotFoundException('Department not found after creation');
+    }
     return department;
-  }
-
-  async create(data: Partial<Department>): Promise<Department> {
-    const department = this.departmentRepo.create(data);
-    return await this.departmentRepo.save(department);
-  }
-
-  async update(id: string, data: Partial<Department>): Promise<Department> {
-    await this.departmentRepo.update(id, data);
-    return this.findOne(id);
-  }
-
-  async delete(id: string): Promise<void> {
-    await this.departmentRepo.delete(id);
   }
 }

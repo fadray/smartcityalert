@@ -1,256 +1,368 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, MoreThan } from 'typeorm';
+import { Repository, Between } from 'typeorm';
 import { Incident } from '../incidents/incident.entity';
-import * as ExcelJS from 'exceljs';
-import * as PDFDocument from 'pdfkit';
+import { User } from '../users/user.entity';
+import { Department } from '../departments/department.entity';
+import { Responder } from '../responders/responder.entity';
 
 @Injectable()
 export class ReportsService {
   constructor(
     @InjectRepository(Incident)
-    private incidentRepo: Repository<Incident>,
+    private incidentRepository: Repository<Incident>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+    @InjectRepository(Department)
+    private departmentRepository: Repository<Department>,
+    @InjectRepository(Responder)
+    private responderRepository: Repository<Responder>,
   ) {}
 
-  async getDepartmentPerformance(departmentId: string, startDate: Date, endDate: Date): Promise<any> {
-    const incidents = await this.incidentRepo.find({
-      where: {
-        department_id: departmentId,
-        created_at: Between(startDate, endDate),
+  async getDailyReport(date?: Date): Promise<any> {
+    const reportDate = date || new Date();
+    const startOfDay = new Date(reportDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(reportDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const incidents = await this.incidentRepository.find({
+      where: { created_at: Between(startOfDay, endOfDay) },
+      relations: {
+        department: true,
+        reported_by: true,
+        assigned_to: true,
+      },
+    });
+    
+    const resolved = incidents.filter(i => i.status === 'closed');
+    const pending = incidents.filter(i => i.status !== 'closed');
+    const escalated = incidents.filter(i => i.current_workflow_level > 1);
+    
+    const byType: Record<string, number> = {};
+    const byDepartment: Record<string, number> = {};
+    
+    incidents.forEach(i => {
+      byType[i.incident_type] = (byType[i.incident_type] || 0) + 1;
+      byDepartment[i.department?.name || 'Unknown'] = (byDepartment[i.department?.name || 'Unknown'] || 0) + 1;
+    });
+    
+    return {
+      date: startOfDay,
+      total_incidents: incidents.length,
+      resolved_incidents: resolved.length,
+      pending_incidents: pending.length,
+      escalated_incidents: escalated.length,
+      success_rate: incidents.length > 0 ? (resolved.length / incidents.length) * 100 : 0,
+      by_type: byType,
+      by_department: byDepartment,
+    };
+  }
+
+  async getWeeklyReport(startDate?: Date): Promise<any> {
+    const start = startDate || new Date();
+    start.setDate(start.getDate() - start.getDay());
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    
+    const incidents = await this.incidentRepository.find({
+      where: { created_at: Between(start, end) },
+      relations: {
+        department: true,
+      },
+    });
+    
+    const resolved = incidents.filter(i => i.status === 'closed');
+    
+    return {
+      week_start: start,
+      week_end: end,
+      total_incidents: incidents.length,
+      resolved_incidents: resolved.length,
+      success_rate: incidents.length > 0 ? (resolved.length / incidents.length) * 100 : 0,
+    };
+  }
+
+  async getMonthlyReport(year?: number, month?: number): Promise<any> {
+    const reportYear = year || new Date().getFullYear();
+    const reportMonth = month !== undefined ? month : new Date().getMonth();
+    
+    const startDate = new Date(reportYear, reportMonth, 1);
+    const endDate = new Date(reportYear, reportMonth + 1, 0, 23, 59, 59, 999);
+    
+    const incidents = await this.incidentRepository.find({
+      where: { created_at: Between(startDate, endDate) },
+      relations: {
+        department: true,
+        reported_by: true,
+        assigned_to: true,
+      },
+    });
+    
+    const resolved = incidents.filter(i => i.status === 'closed');
+    const escalated = incidents.filter(i => i.current_workflow_level > 1);
+    const byType: Record<string, number> = {};
+    const byDepartment: Record<string, number> = {};
+    
+    incidents.forEach(i => {
+      byType[i.incident_type] = (byType[i.incident_type] || 0) + 1;
+      byDepartment[i.department?.name || 'Unknown'] = (byDepartment[i.department?.name || 'Unknown'] || 0) + 1;
+    });
+    
+    return {
+      month: reportMonth + 1,
+      year: reportYear,
+      month_name: new Date(reportYear, reportMonth).toLocaleString('default', { month: 'long' }),
+      start_date: startDate,
+      end_date: endDate,
+      total_incidents: incidents.length,
+      resolved_incidents: resolved.length,
+      pending_incidents: incidents.length - resolved.length,
+      success_rate: incidents.length > 0 ? (resolved.length / incidents.length) * 100 : 0,
+      failure_rate: incidents.length > 0 ? ((incidents.length - resolved.length) / incidents.length) * 100 : 0,
+      escalation_rate: incidents.length > 0 ? (escalated.length / incidents.length) * 100 : 0,
+      by_type: byType,
+      by_department: byDepartment,
+    };
+  }
+
+  async getIncidentTypeReport(startDate?: Date, endDate?: Date): Promise<any> {
+    const start = startDate || new Date(new Date().setDate(1));
+    const end = endDate || new Date();
+    
+    const incidents = await this.incidentRepository.find({
+      where: { created_at: Between(start, end) },
+      relations: {
+        department: true,
+      },
+    });
+    
+    const types = ['medical', 'fire', 'security', 'maintenance'];
+    const incidentTypes: Record<string, any> = {};
+    
+    for (const type of types) {
+      const typeIncidents = incidents.filter(i => i.incident_type === type);
+      const resolved = typeIncidents.filter(i => i.status === 'closed');
+      incidentTypes[type] = {
+        total: typeIncidents.length,
+        resolved: resolved.length,
+        pending: typeIncidents.length - resolved.length,
+        success_rate: typeIncidents.length > 0 ? (resolved.length / typeIncidents.length) * 100 : 0,
+      };
+    }
+    
+    return {
+      period: { start, end },
+      incident_types: incidentTypes,
+      total_incidents: incidents.length,
+    };
+  }
+
+  async getResponderReport(startDate?: Date, endDate?: Date): Promise<any> {
+    const start = startDate || new Date(new Date().setDate(1));
+    const end = endDate || new Date();
+    
+    const responders = await this.responderRepository.find({
+      relations: {
+        user: true,
+        department: true,
+      },
+    });
+    
+    const responderList: any[] = [];
+    
+    for (const responder of responders) {
+      const incidents = await this.incidentRepository.find({
+        where: {
+          assigned_to_id: responder.id,
+          created_at: Between(start, end),
+        },
+      });
+      
+      const resolved = incidents.filter(i => i.status === 'closed');
+      
+      responderList.push({
+        responder_id: responder.id,
+        name: responder.user?.full_name || 'Unknown',
+        department: responder.department?.name || 'Unknown',
+        total_assigned: incidents.length,
+        resolved_count: resolved.length,
+        success_rate: incidents.length > 0 ? (resolved.length / incidents.length) * 100 : 0,
+      });
+    }
+    
+    responderList.sort((a, b) => b.success_rate - a.success_rate);
+    
+    return {
+      period: { start, end },
+      responders: responderList,
+      top_performer: responderList[0],
+    };
+  }
+
+  async getDepartmentReport(startDate?: Date, endDate?: Date): Promise<any> {
+    const start = startDate || new Date(new Date().setDate(1));
+    const end = endDate || new Date();
+    
+    const departments = await this.departmentRepository.find();
+    const departmentList: any[] = [];
+    
+    for (const department of departments) {
+      const incidents = await this.incidentRepository.find({
+        where: {
+          department_id: department.id,
+          created_at: Between(start, end),
+        },
+      });
+      
+      const resolved = incidents.filter(i => i.status === 'closed');
+      
+      departmentList.push({
+        department_id: department.id,
+        department_name: department.name,
+        color: department.color,
+        total_incidents: incidents.length,
+        resolved_incidents: resolved.length,
+        success_rate: incidents.length > 0 ? (resolved.length / incidents.length) * 100 : 0,
+      });
+    }
+    
+    departmentList.sort((a, b) => b.success_rate - a.success_rate);
+    
+    return {
+      period: { start, end },
+      departments: departmentList,
+      best_performing: departmentList[0],
+    };
+  }
+
+  async getSuccessRateReport(startDate?: Date, endDate?: Date): Promise<any> {
+    const start = startDate || new Date(new Date().setMonth(new Date().getMonth() - 3));
+    const end = endDate || new Date();
+    
+    const incidents = await this.incidentRepository.find({
+      where: { created_at: Between(start, end) },
+      relations: {
+        department: true,
+        assigned_to: true,
       },
     });
     
     const total = incidents.length;
-    const resolved = incidents.filter(i => i.status === 'resolved').length;
+    const resolved = incidents.filter(i => i.status === 'closed').length;
     const escalated = incidents.filter(i => i.current_workflow_level > 1).length;
-    const successRate = total > 0 ? (resolved / total) * 100 : 0;
-    
-    // Calculate average response time
-    const avgResponseTime = incidents
-      .filter(i => i.acknowledged_at)
-      .reduce((sum, i) => {
-        const time = new Date(i.acknowledged_at).getTime() - new Date(i.created_at).getTime();
-        return sum + time;
-      }, 0) / (incidents.filter(i => i.acknowledged_at).length || 1);
     
     return {
-      department_id: departmentId,
-      period: { start: startDate, end: endDate },
-      total_incidents: total,
-      resolved_incidents: resolved,
-      pending_incidents: total - resolved,
-      escalated_incidents: escalated,
-      success_rate: successRate.toFixed(2),
-      avg_response_time_minutes: Math.round(avgResponseTime / 60000),
-      sla_achievement: await this.getSLAAchievement(departmentId, startDate, endDate),
-    };
-  }
-
-  async getResponderPerformance(responderId: string, startDate: Date, endDate: Date): Promise<any> {
-    const incidents = await this.incidentRepo.find({
-      where: {
-        assigned_to: responderId,
-        resolved_at: Between(startDate, endDate),
+      period: { start, end },
+      overall: {
+        total_incidents: total,
+        resolved_incidents: resolved,
+        pending_incidents: total - resolved,
+        success_rate: total > 0 ? (resolved / total) * 100 : 0,
+        failure_rate: total > 0 ? ((total - resolved) / total) * 100 : 0,
+        escalation_rate: total > 0 ? (escalated / total) * 100 : 0,
       },
-    });
-    
-    const resolved = incidents.filter(i => i.status === 'resolved').length;
-    const avgResolutionTime = incidents.reduce((sum, i) => {
-      const time = new Date(i.resolved_at).getTime() - new Date(i.assigned_at).getTime();
-      return sum + time;
-    }, 0) / (incidents.length || 1);
-    
-    return {
-      responder_id: responderId,
-      period: { start: startDate, end: endDate },
-      total_assigned: incidents.length,
-      resolved_count: resolved,
-      success_rate: incidents.length > 0 ? (resolved / incidents.length) * 100 : 0,
-      avg_resolution_time_minutes: Math.round(avgResolutionTime / 60000),
+      recommendations: this.generateRecommendations(incidents),
     };
   }
 
-  async getSLAAchievement(departmentId: string, startDate: Date, endDate: Date): Promise<any> {
-    const incidents = await this.incidentRepo.find({
-      where: {
-        department_id: departmentId,
-        created_at: Between(startDate, endDate),
-        resolved_at: MoreThan(new Date()),
+  async getCombinedReport(startDate?: Date, endDate?: Date): Promise<any> {
+    const start = startDate || new Date(new Date().setDate(1));
+    const end = endDate || new Date();
+    
+    const [monthly, byType, byResponder, byDepartment] = await Promise.all([
+      this.getMonthlyReport(new Date().getFullYear(), new Date().getMonth()),
+      this.getIncidentTypeReport(start, end),
+      this.getResponderReport(start, end),
+      this.getDepartmentReport(start, end),
+    ]);
+    
+    return {
+      period: { start, end },
+      executive_summary: {
+        total_incidents: monthly.total_incidents,
+        resolved_incidents: monthly.resolved_incidents,
+        overall_success_rate: monthly.success_rate,
+        escalation_rate: monthly.escalation_rate,
       },
-    });
-    
-    const slaMet = incidents.filter(i => {
-      const resolutionTime = new Date(i.resolved_at).getTime() - new Date(i.created_at).getTime();
-      const slaLimit = i.severity_level === 1 ? 60 : // 1 hour for low severity
-                       i.severity_level === 2 ? 30 : // 30 min for medium
-                       i.severity_level === 3 ? 15 : // 15 min for high
-                       i.severity_level >= 4 ? 5 : 60; // 5 min for critical
-      return resolutionTime <= slaLimit * 60000;
-    }).length;
-    
-    return {
-      total_incidents: incidents.length,
-      sla_met: slaMet,
-      sla_missed: incidents.length - slaMet,
-      sla_percentage: incidents.length > 0 ? (slaMet / incidents.length) * 100 : 0,
-    };
-  }
-
-  async generateExcelReport(reportType: string, params: any): Promise<Buffer> {
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Report');
-    
-    // Add headers
-    worksheet.columns = [
-      { header: 'Incident ID', key: 'id', width: 30 },
-      { header: 'Title', key: 'title', width: 40 },
-      { header: 'Type', key: 'type', width: 15 },
-      { header: 'Severity', key: 'severity', width: 10 },
-      { header: 'Status', key: 'status', width: 15 },
-      { header: 'Created At', key: 'created_at', width: 20 },
-      { header: 'Resolved At', key: 'resolved_at', width: 20 },
-      { header: 'Response Time', key: 'response_time', width: 15 },
-    ];
-    
-    // Fetch data based on report type
-    let incidents = [];
-    if (reportType === 'department') {
-      incidents = await this.incidentRepo.find({
-        where: { department_id: params.departmentId },
-        relations: ['assigned_to'],
-      });
-    } else {
-      incidents = await this.incidentRepo.find();
-    }
-    
-    // Add rows
-    for (const incident of incidents) {
-      const responseTime = incident.acknowledged_at
-        ? Math.round((new Date(incident.acknowledged_at).getTime() - new Date(incident.created_at).getTime()) / 60000)
-        : 'Pending';
-      
-      worksheet.addRow({
-        id: incident.id,
-        title: incident.title,
-        type: incident.incident_type,
-        severity: incident.severity_level,
-        status: incident.status,
-        created_at: new Date(incident.created_at).toLocaleString(),
-        resolved_at: incident.resolved_at ? new Date(incident.resolved_at).toLocaleString() : 'Pending',
-        response_time: responseTime + ' min',
-      });
-    }
-    
-    // Style the header row
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF4F46E5' },
-    };
-    worksheet.getRow(1).font = { color: { argb: 'FFFFFFFF' } };
-    
-    const buffer = await workbook.xlsx.writeBuffer();
-    return Buffer.from(buffer);
-  }
-
-  async generatePDFReport(incidentId: string): Promise<Buffer> {
-    const incident = await this.incidentRepo.findOne({
-      where: { id: incidentId },
-      relations: ['reported_by', 'assigned_to', 'assigned_to.user'],
-    });
-    
-    return new Promise((resolve) => {
-      const chunks: Buffer[] = [];
-      const doc = new PDFDocument();
-      
-      doc.on('data', chunks.push.bind(chunks));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      
-      // Header
-      doc.fontSize(20).text('SmartCityAlert - Incident Report', { align: 'center' });
-      doc.moveDown();
-      doc.fontSize(12).text(`Report Generated: ${new Date().toLocaleString()}`, { align: 'center' });
-      doc.moveDown();
-      
-      // Incident Details
-      doc.fontSize(16).text('Incident Details', { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(12).text(`Incident ID: ${incident.id}`);
-      doc.text(`Title: ${incident.title}`);
-      doc.text(`Type: ${incident.incident_type}`);
-      doc.text(`Severity: Level ${incident.severity_level}`);
-      doc.text(`Status: ${incident.status}`);
-      doc.text(`Description: ${incident.description || 'N/A'}`);
-      doc.moveDown();
-      
-      // Timeline
-      doc.fontSize(16).text('Timeline', { underline: true });
-      doc.moveDown(0.5);
-      doc.text(`Reported: ${new Date(incident.created_at).toLocaleString()}`);
-      if (incident.acknowledged_at) {
-        doc.text(`Acknowledged: ${new Date(incident.acknowledged_at).toLocaleString()}`);
-      }
-      if (incident.resolved_at) {
-        doc.text(`Resolved: ${new Date(incident.resolved_at).toLocaleString()}`);
-      }
-      doc.moveDown();
-      
-      // Escalation History
-      doc.fontSize(16).text('Escalation History', { underline: true });
-      doc.moveDown(0.5);
-      incident.escalation_history.forEach((event: any, index: number) => {
-        doc.text(`${index + 1}. Level ${event.level} - ${new Date(event.timestamp).toLocaleString()}`);
-        doc.text(`   Reason: ${event.reason}`);
-      });
-      
-      doc.end();
-    });
-  }
-
-  async getDashboardStats(): Promise<any> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const activeIncidents = await this.incidentRepo.count({
-      where: { status: ['pending', 'acknowledged', 'assigned', 'in_progress', 'escalated'] },
-    });
-    
-    const todayIncidents = await this.incidentRepo.count({
-      where: { created_at: MoreThan(today) },
-    });
-    
-    const resolvedToday = await this.incidentRepo.count({
-      where: { resolved_at: MoreThan(today), status: 'resolved' },
-    });
-    
-    const avgResponse = await this.incidentRepo
-      .createQueryBuilder('incident')
-      .select('AVG(EXTRACT(EPOCH FROM (incident.acknowledged_at - incident.created_at)))', 'avg')
-      .where('incident.acknowledged_at IS NOT NULL')
-      .getRawOne();
-    
-    const byDepartment = await this.incidentRepo
-      .createQueryBuilder('incident')
-      .select('d.name', 'department')
-      .addSelect('COUNT(*)', 'count')
-      .leftJoin('departments', 'd', 'd.id = incident.department_id')
-      .groupBy('d.name')
-      .getRawMany();
-    
-    return {
-      active_incidents: activeIncidents,
-      today_incidents: todayIncidents,
-      resolved_today: resolvedToday,
-      avg_response_time_seconds: parseInt(avgResponse?.avg || 0),
+      monthly,
+      by_incident_type: byType,
+      by_responder: byResponder,
       by_department: byDepartment,
-      success_rate: await this.getOverallSuccessRate(),
     };
   }
 
-  async getOverallSuccessRate(): Promise<number> {
-    const total = await this.incidentRepo.count();
-    const resolved = await this.incidentRepo.count({ where: { status: 'resolved' } });
-    return total > 0 ? (resolved / total) * 100 : 0;
+  async exportToCSV(reportType: string, params: any): Promise<string> {
+    let data: any[] = [];
+    
+    switch (reportType) {
+      case 'incidents':
+        const incidents = await this.incidentRepository.find({
+          where: { created_at: Between(params.startDate, params.endDate) },
+          relations: {
+            department: true,
+            reported_by: true,
+            assigned_to: true,
+          },
+        });
+        data = incidents.map(i => ({
+          'Incident ID': i.id,
+          'Title': i.title,
+          'Type': i.incident_type,
+          'Department': i.department?.name,
+          'Severity': i.severity_level,
+          'Status': i.status,
+          'Created At': i.created_at,
+        }));
+        break;
+      case 'responders':
+        const responderReport = await this.getResponderReport(params.startDate, params.endDate);
+        data = responderReport.responders;
+        break;
+      case 'departments':
+        const deptReport = await this.getDepartmentReport(params.startDate, params.endDate);
+        data = deptReport.departments;
+        break;
+      default:
+        return '';
+    }
+    
+    if (data.length === 0) return '';
+    
+    const headers = Object.keys(data[0]);
+    const csvRows = [headers.join(',')];
+    
+    for (const row of data) {
+      const values = headers.map(header => {
+        const value = row[header];
+        return `"${String(value || '').replace(/"/g, '""')}"`;
+      });
+      csvRows.push(values.join(','));
+    }
+    
+    return csvRows.join('\n');
+  }
+
+  private generateRecommendations(incidents: any[]): string[] {
+    const recommendations: string[] = [];
+    const byType: Record<string, number> = {};
+    
+    incidents.forEach(i => {
+      byType[i.incident_type] = (byType[i.incident_type] || 0) + 1;
+    });
+    
+    const mostCommonType = Object.entries(byType).sort((a, b) => b[1] - a[1])[0];
+    if (mostCommonType && mostCommonType[1] > 10) {
+      recommendations.push(`High volume of ${mostCommonType[0]} incidents detected. Consider additional training for this incident type.`);
+    }
+    
+    const escalationRate = incidents.filter(i => i.current_workflow_level > 1).length / incidents.length;
+    if (escalationRate > 0.3) {
+      recommendations.push(`High escalation rate (${Math.round(escalationRate * 100)}%). Review response protocols and initial responder training.`);
+    }
+    
+    return recommendations;
   }
 }

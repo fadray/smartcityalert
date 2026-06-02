@@ -1,141 +1,81 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { Incident } from '../incidents/incident.entity';
-import { NotificationsService } from '../notifications/notifications.service';
-import { WebsocketGateway } from '../websocket/websocket.gateway';
+import { EscalationRule } from './workflow.interface';
 
 @Injectable()
 export class WorkflowService {
-  private readonly logger = new Logger(WorkflowService.name);
+  private escalationRules: EscalationRule[] = [
+    { id: '1', level: 1, role: 'responder', timeout_minutes: 30, next_role: 'supervisor', is_active: true },
+    { id: '2', level: 2, role: 'supervisor', timeout_minutes: 60, next_role: 'hod', is_active: true },
+    { id: '3', level: 3, role: 'hod', timeout_minutes: 120, next_role: 'dept_director', is_active: true },
+    { id: '4', level: 4, role: 'dept_director', timeout_minutes: 180, next_role: 'overall_manager', is_active: true },
+    { id: '5', level: 5, role: 'overall_manager', timeout_minutes: 240, next_role: 'overall_director', is_active: true },
+    { id: '6', level: 6, role: 'overall_director', timeout_minutes: 300, next_role: 'admin', is_active: true },
+  ];
 
   constructor(
     @InjectRepository(Incident)
-    private incidentRepo: Repository<Incident>,
-    private notificationService: NotificationsService,
-    private websocketGateway: WebsocketGateway,
+    private incidentRepository: Repository<Incident>,
   ) {}
 
-  @Cron(CronExpression.EVERY_5_MINUTES)
-  async processEscalations() {
-    this.logger.log('Checking for incidents needing escalation...');
-    
-    const incidents = await this.incidentRepo
-      .createQueryBuilder('incident')
-      .where('incident.status IN (:...statuses)', { 
-        statuses: ['pending', 'acknowledged', 'assigned', 'in_progress'] 
-      })
-      .andWhere('incident.current_workflow_level < 8')
-      .andWhere(
-        `incident.last_escalated_at IS NULL OR 
-         incident.last_escalated_at < NOW() - (incident.current_workflow_level * INTERVAL '30 minutes')`
-      )
-      .getMany();
-
-    for (const incident of incidents) {
-      await this.escalateIncident(incident);
-    }
-  }
-
-  async escalateIncident(incident: Incident) {
-    const newLevel = incident.current_workflow_level + 1;
-    
-    this.logger.warn(`Escalating incident ${incident.id} to level ${newLevel}`);
-    
-    // Determine target role based on escalation level
-    const targetRole = this.getTargetRoleForLevel(newLevel, incident.department_id);
-    
-    incident.current_workflow_level = newLevel;
-    incident.last_escalated_at = new Date();
-    incident.status = 'escalated';
-    incident.escalation_history.push({
-      level: newLevel,
-      timestamp: new Date(),
-      target_role: targetRole,
-      reason: `No response within timeout period (Level ${newLevel-1} to ${newLevel})`,
-    });
-    
-    await this.incidentRepo.save(incident);
-    
-    // Notify target users
-    await this.notifyTargetRole(targetRole, incident);
-    
-    // Send real-time update
-    this.websocketGateway.emitToAll('incident_escalated', {
-      incidentId: incident.id,
-      level: newLevel,
-      targetRole: targetRole,
-    });
-    
-    // For level 5+, send SMS to directors
-    if (newLevel >= 5) {
-      await this.sendHighLevelAlert(incident);
-    }
-  }
-
-  getTargetRoleForLevel(level: number, departmentId: string): string {
-    const roleMap: { [key: number]: string } = {
-      1: 'responder',
-      2: 'supervisor',
-      3: 'hod',
-      4: 'dept_director',
-      5: 'overall_manager',
-      6: 'overall_director',
-      7: 'overall_director',
-      8: 'admin',
-    };
-    return roleMap[level] || 'admin';
-  }
-
-  async notifyTargetRole(role: string, incident: Incident) {
-    // Find users with this role in the same department
-    const users = await this.incidentRepo.manager.query(`
-      SELECT u.* FROM users u
-      WHERE u.role = $1 AND u.department_id = $2 AND u.is_active = true
-    `, [role, incident.department_id]);
-    
-    for (const user of users) {
-      await this.notificationService.sendToUser(user.id, {
-        title: `⚠️ Escalated: Incident #${incident.id.slice(0,8)}`,
-        body: `Level ${incident.current_workflow_level} - ${incident.title}`,
-        data: { incidentId: incident.id, action: 'view_incident' },
-        priority: 'high',
-      });
-    }
-  }
-
-  async sendHighLevelAlert(incident: Incident) {
-    const directors = await this.incidentRepo.manager.query(`
-      SELECT phone, email FROM users 
-      WHERE role IN ('overall_manager', 'overall_director', 'admin')
-    `);
-    
-    for (const director of directors) {
-      await this.notificationService.sendSMS(
-        director.phone,
-        `URGENT: Incident ${incident.id.slice(0,8)} escalated to level ${incident.current_workflow_level}. Type: ${incident.incident_type}. Immediate action required.`
-      );
-    }
-  }
-
   async getWorkflowStatus(incidentId: string): Promise<any> {
-    const incident = await this.incidentRepo.findOne({ where: { id: incidentId } });
+    const incident = await this.incidentRepository.findOne({ where: { id: incidentId } });
+    if (!incident) return null;
+    
+    const currentRule = this.escalationRules.find(r => r.level === incident.current_workflow_level);
     
     return {
       current_level: incident.current_workflow_level,
-      max_level: 8,
+      current_role: currentRule?.role,
+      max_level: this.escalationRules.length,
       status: incident.status,
-      escalation_history: incident.escalation_history,
-      time_elapsed: Math.floor((Date.now() - new Date(incident.created_at).getTime()) / 60000),
-      estimated_completion: this.estimateCompletion(incident),
+      escalation_history: incident.escalation_history || [],
+      time_elapsed_minutes: Math.floor((Date.now() - new Date(incident.created_at).getTime()) / 60000),
+      next_role: currentRule?.next_role,
+      next_timeout: currentRule?.timeout_minutes,
     };
   }
 
-  estimateCompletion(incident: Incident): Date {
-    const baseTime = new Date(incident.created_at);
-    const levelMultiplier = incident.current_workflow_level;
-    const minutes = levelMultiplier * 30;
-    return new Date(baseTime.getTime() + minutes * 60000);
+  async getEscalationRules(): Promise<EscalationRule[]> {
+    return this.escalationRules;
+  }
+
+  async createEscalationRule(rule: any): Promise<EscalationRule> {
+    const newRule: EscalationRule = {
+      id: Date.now().toString(),
+      level: this.escalationRules.length + 1,
+      role: rule.role,
+      timeout_minutes: rule.timeout_minutes,
+      next_role: rule.next_role,
+      is_active: true,
+    };
+    this.escalationRules.push(newRule);
+    return newRule;
+  }
+
+  async updateEscalationRule(id: string, rule: any): Promise<EscalationRule> {
+    const index = this.escalationRules.findIndex(r => r.id === id);
+    if (index === -1) throw new Error('Rule not found');
+    
+    this.escalationRules[index] = { ...this.escalationRules[index], ...rule };
+    return this.escalationRules[index];
+  }
+
+  async getWorkflowConfig(): Promise<any> {
+    return {
+      rules: this.escalationRules,
+      auto_escalation_enabled: true,
+      check_interval_minutes: 5,
+      notification_enabled: true,
+    };
+  }
+
+  async updateWorkflowConfig(config: any): Promise<any> {
+    if (config.rules) {
+      this.escalationRules = config.rules;
+    }
+    return { success: true, config: await this.getWorkflowConfig() };
   }
 }

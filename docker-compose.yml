@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: smartcity-postgres
+    environment:
+      POSTGRES_DB: smartcityalert
+      POSTGRES_USER: smartcity
+      POSTGRES_PASSWORD: SecurePass123!
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/database/migrations/01-create-schema.sql:/docker-entrypoint-initdb.d/01-create-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartcity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
