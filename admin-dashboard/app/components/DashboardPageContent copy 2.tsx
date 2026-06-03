@@ -10,7 +10,6 @@ import StatsCards from './Layout/StatsCards';
 import ChartsSection from './ChartsSection';
 import DashboardContentTable from './DashboardContent';
 import MaintenanceDashboard from './Maintenance/MaintenanceDashboard';
-import UserManagement from './Users/UserManagement';
 import ReportIncident from './ReportIncident';
 import { apiClient } from '../utils/api';
 import { Incident, Department, Stats, User } from '../types';
@@ -50,7 +49,6 @@ export default function DashboardPageContent() {
     endDate: '',
   });
   const [showFilters, setShowFilters] = useState(false);
-  const [debugInfo, setDebugInfo] = useState('');
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -70,9 +68,9 @@ export default function DashboardPageContent() {
     const api = apiClient(token);
     try {
       const incidentsRes = await api.get('/api/incidents');
+      console.log('Fetched incidents:', incidentsRes.data);
       const incidentsData = incidentsRes.data;
       setIncidents(incidentsData);
-      setDebugInfo(`Loaded ${incidentsData.length} incidents`);
 
       const deptsRes = await api.get('/api/departments');
       setDepartments(deptsRes.data);
@@ -93,8 +91,7 @@ export default function DashboardPageContent() {
       toast.success(`Loaded ${incidentsData.length} incidents`);
     } catch (error: any) {
       console.error('Failed to fetch data:', error);
-      setDebugInfo(`Error: ${error.message}`);
-      toast.error('Failed to load data: ' + error.message);
+      toast.error('Failed to load data');
     } finally {
       setDataLoading(false);
     }
@@ -266,10 +263,6 @@ export default function DashboardPageContent() {
             
             {activeTab === 'maintenance' && isAdmin && (
               <MaintenanceDashboard token={token} />
-            )}
-            
-            {activeTab === 'users' && isAdmin && (
-              <UserManagement token={token} onRefresh={refreshData} />
             )}
             
             {activeTab === 'incidents' && (
@@ -510,6 +503,43 @@ export default function DashboardPageContent() {
 
             {activeTab === 'report' && (
               <ReportIncident token={token} onSuccess={refreshData} />
+            )}
+
+            {activeTab === 'users' && isAdmin && (
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900">User Management</h2>
+                  <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
+                    + Add User
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-300">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Name</th>
+                        <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Phone</th>
+                        <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Role</th>
+                        <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Department</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {users.map((userItem) => (
+                        <tr key={userItem.id} className="hover:bg-gray-50">
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">{userItem.full_name}</td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{userItem.phone}</td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm">
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+                              {userItem.role}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{userItem.department?.name || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
 
             {activeTab === 'departments' && isAdmin && (
