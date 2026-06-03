@@ -13,6 +13,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
+import { EmailModule } from './email/email.module';
 import { Department } from './departments/department.entity';
 import { User } from './users/user.entity';
 import { Incident } from './incidents/incident.entity';
@@ -51,6 +52,7 @@ import { Responder } from './responders/responder.entity';
     WorkflowModule,
     PermissionsModule,
     MaintenanceModule,
+    EmailModule,
   ],
 })
 export class AppModule {}
