@@ -38,15 +38,13 @@ function getSeverityBadge(level: number): string {
 }
 
 export default function DashboardContent({ incidents, onViewIncident }: DashboardContentProps) {
-  // Sort incidents by created_at descending and take only first 5
-  const recentIncidents = [...incidents]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 5);
+  // Show all incidents, not just recent ones
+  const displayIncidents = incidents;
 
-  if (recentIncidents.length === 0) {
+  if (displayIncidents.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-        <p className="text-gray-500">No recent incidents. Create your first incident!</p>
+        <p className="text-gray-500">No incidents found. Create your first incident!</p>
       </div>
     );
   }
@@ -55,7 +53,7 @@ export default function DashboardContent({ incidents, onViewIncident }: Dashboar
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
         <h3 className="text-lg font-semibold text-gray-900">Recent Incidents</h3>
-        <p className="text-sm text-gray-500 mt-1">Showing the latest 5 incidents</p>
+        <p className="text-sm text-gray-500 mt-1">Showing latest {displayIncidents.length} incidents</p>
       </div>
       
       <div className="overflow-x-auto">
@@ -67,12 +65,12 @@ export default function DashboardContent({ incidents, onViewIncident }: Dashboar
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Severity</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {recentIncidents.map((incident) => (
+            {displayIncidents.map((incident) => (
               <tr key={incident.id} className="hover:bg-gray-50 transition-colors duration-150">
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">
                   {incident.id.slice(0, 8)}
