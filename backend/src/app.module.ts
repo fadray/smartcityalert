@@ -13,11 +13,12 @@ import { UploadsModule } from './uploads/uploads.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
-import { EmailModule } from './email/email.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { Department } from './departments/department.entity';
 import { User } from './users/user.entity';
 import { Incident } from './incidents/incident.entity';
 import { Responder } from './responders/responder.entity';
+import { Notification } from './notifications/notification.entity';
 
 @Module({
   imports: [
@@ -34,7 +35,7 @@ import { Responder } from './responders/responder.entity';
         username: configService.get('DB_USER', 'smartcity'),
         password: configService.get('DB_PASSWORD', 'SecurePass123!'),
         database: configService.get('DB_NAME', 'smartcityalert'),
-        entities: [Department, User, Incident, Responder],
+        entities: [Department, User, Incident, Responder, Notification],
         synchronize: false,
         logging: true,
       }),
@@ -52,7 +53,7 @@ import { Responder } from './responders/responder.entity';
     WorkflowModule,
     PermissionsModule,
     MaintenanceModule,
-    EmailModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}

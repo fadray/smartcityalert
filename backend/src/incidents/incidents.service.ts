@@ -4,6 +4,7 @@ import { Repository, In } from 'typeorm';
 import { Incident } from './incident.entity';
 import { User } from '../users/user.entity';
 import { Responder } from '../responders/responder.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 interface HistoryEntry {
   id: string;
@@ -29,6 +30,7 @@ export class IncidentsService {
     private userRepository: Repository<User>,
     @InjectRepository(Responder)
     private responderRepository: Repository<Responder>,
+    private notificationsService: NotificationsService,
   ) {}
 
   async findAll(): Promise<Incident[]> {
@@ -89,7 +91,12 @@ export class IncidentsService {
       approvals: JSON.stringify([]),
     });
     const id = result.identifiers[0].id;
-    return this.findOne(id);
+    const incident = await this.findOne(id);
+    
+    // Send notifications for new incident
+    await this.notificationsService.notifyNewIncident(incident);
+    
+    return incident;
   }
 
   async updateStatus(id: string, status: string, userId?: string, userName?: string, userRole?: string): Promise<Incident> {
@@ -97,6 +104,8 @@ export class IncidentsService {
     if (!incident) {
       throw new NotFoundException('Incident not found');
     }
+    
+    const oldStatus = incident.status;
     
     let history: HistoryEntry[] = [];
     if (incident.escalation_history) {
@@ -128,7 +137,17 @@ export class IncidentsService {
       escalation_history: JSON.stringify(history),
     });
     
-    return this.findOne(id);
+    const updatedIncident = await this.findOne(id);
+    
+    // Send notification for status change
+    if (userId) {
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (user) {
+        await this.notificationsService.notifyStatusChange(updatedIncident, oldStatus, status, user);
+      }
+    }
+    
+    return updatedIncident;
   }
 
   async updateWorkflowLevel(id: string, level: number, userId?: string, userName?: string): Promise<Incident> {
@@ -166,7 +185,12 @@ export class IncidentsService {
       escalation_history: JSON.stringify(history),
     });
     
-    return this.findOne(id);
+    const updatedIncident = await this.findOne(id);
+    
+    // Send escalation notification
+    await this.notificationsService.notifyEscalation(updatedIncident, level);
+    
+    return updatedIncident;
   }
 
   async assignToUser(incidentId: string, assigneeId: string, assigneeType: string, comments: string, assignedById: string, assignedByName: string): Promise<Incident> {
@@ -176,12 +200,14 @@ export class IncidentsService {
     const oldAssignee = incident.assigned_to_id;
     
     let assigneeName = '';
+    let assigneeUser: User | null = null;
+    
     if (assigneeType === 'user') {
-      const user = await this.userRepository.findOne({ where: { id: assigneeId } });
-      if (!user) {
+      assigneeUser = await this.userRepository.findOne({ where: { id: assigneeId } });
+      if (!assigneeUser) {
         throw new NotFoundException('User not found');
       }
-      assigneeName = user.full_name;
+      assigneeName = assigneeUser.full_name;
     } else {
       const responder = await this.responderRepository
         .createQueryBuilder('responder')
@@ -192,6 +218,7 @@ export class IncidentsService {
         throw new NotFoundException('Responder not found');
       }
       assigneeName = responder.user?.full_name || 'Unknown';
+      assigneeUser = responder.user;
     }
     
     let history: HistoryEntry[] = [];
@@ -227,50 +254,15 @@ export class IncidentsService {
       escalation_history: JSON.stringify(history),
     });
     
-    return this.findOne(incidentId);
-  }
-
-  async getStats(): Promise<any> {
-    const active = await this.incidentRepository.count({
-      where: { status: In(['pending', 'acknowledged', 'assigned', 'in_progress', 'escalated', 'pending_approval']) },
-    });
+    const updatedIncident = await this.findOne(incidentId);
     
-    const pendingApproval = await this.incidentRepository.count({
-      where: { status: 'pending_approval' },
-    });
+    // Send assignment notification
+    const assignedBy = await this.userRepository.findOne({ where: { id: assignedById } });
+    if (assigneeUser && assignedBy) {
+      await this.notificationsService.notifyAssignment(updatedIncident, assigneeUser, assignedBy);
+    }
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const todayCount = await this.incidentRepository.count({
-      where: { created_at: today as any },
-    });
-    
-    const byDepartment = await this.incidentRepository
-      .createQueryBuilder('incident')
-      .select('department.name', 'name')
-      .addSelect('COUNT(*)', 'count')
-      .leftJoin('incident.department', 'department')
-      .groupBy('department.name')
-      .getRawMany();
-    
-    return { 
-      active_incidents: active, 
-      pending_approvals: pendingApproval,
-      today_incidents: todayCount, 
-      by_department: byDepartment 
-    };
-  }
-
-  async getPendingApprovals(role: string, userId: string): Promise<Incident[]> {
-    return this.incidentRepository.find({
-      where: { 
-        status: 'pending_approval',
-      },
-      relations: {
-        department: true,
-      },
-    });
+    return updatedIncident;
   }
 
   async uploadResolutionProof(
@@ -335,7 +327,15 @@ export class IncidentsService {
       updated_at: new Date(),
     });
     
-    return this.findOne(id);
+    const updatedIncident = await this.findOne(id);
+    
+    // Send resolution proof notification
+    const submitter = await this.userRepository.findOne({ where: { id: userId } });
+    if (submitter) {
+      await this.notificationsService.notifyResolutionProof(updatedIncident, submitter);
+    }
+    
+    return updatedIncident;
   }
 
   async approveResolution(
@@ -408,7 +408,15 @@ export class IncidentsService {
     }
     
     await this.incidentRepository.update(id, updateData);
-    return this.findOne(id);
+    const updatedIncident = await this.findOne(id);
+    
+    // Send approval notification
+    const approver = await this.userRepository.findOne({ where: { id: approverId } });
+    if (approver) {
+      await this.notificationsService.notifyApproval(updatedIncident, approver, 'approved');
+    }
+    
+    return updatedIncident;
   }
 
   async rejectResolution(
@@ -447,6 +455,57 @@ export class IncidentsService {
       escalation_history: JSON.stringify(history),
       updated_at: new Date(),
     });
-    return this.findOne(id);
+    const updatedIncident = await this.findOne(id);
+    
+    // Send rejection notification
+    const approver = await this.userRepository.findOne({ where: { id: approverId } });
+    if (approver) {
+      await this.notificationsService.notifyApproval(updatedIncident, approver, 'rejected');
+    }
+    
+    return updatedIncident;
+  }
+
+  async getStats(): Promise<any> {
+    const active = await this.incidentRepository.count({
+      where: { status: In(['pending', 'acknowledged', 'assigned', 'in_progress', 'escalated', 'pending_approval']) },
+    });
+    
+    const pendingApproval = await this.incidentRepository.count({
+      where: { status: 'pending_approval' },
+    });
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const todayCount = await this.incidentRepository.count({
+      where: { created_at: today as any },
+    });
+    
+    const byDepartment = await this.incidentRepository
+      .createQueryBuilder('incident')
+      .select('department.name', 'name')
+      .addSelect('COUNT(*)', 'count')
+      .leftJoin('incident.department', 'department')
+      .groupBy('department.name')
+      .getRawMany();
+    
+    return { 
+      active_incidents: active, 
+      pending_approvals: pendingApproval,
+      today_incidents: todayCount, 
+      by_department: byDepartment 
+    };
+  }
+
+  async getPendingApprovals(role: string, userId: string): Promise<Incident[]> {
+    return this.incidentRepository.find({
+      where: { 
+        status: 'pending_approval',
+      },
+      relations: {
+        department: true,
+      },
+    });
   }
 }
