@@ -53,6 +53,9 @@ export class Incident {
   @Column({ nullable: true })
   assigned_to_id: string;
 
+  @Column({ nullable: true })
+  assignee_type: string;
+
   @Column({ default: 1 })
   current_workflow_level: number;
 

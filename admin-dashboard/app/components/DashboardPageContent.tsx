@@ -9,6 +9,7 @@ import Header from './Layout/Header';
 import StatsCards from './Layout/StatsCards';
 import ChartsSection from './ChartsSection';
 import DashboardContentTable from './DashboardContent';
+import IncidentDetailModal from './Incidents/IncidentDetailModal';
 import MaintenanceDashboard from './Maintenance/MaintenanceDashboard';
 import UserManagement from './Users/UserManagement';
 import ReportIncident from './ReportIncident';
@@ -306,7 +307,7 @@ export default function DashboardPageContent() {
                         <select
                           value={filters.type}
                           onChange={(e) => handleFilterChange('type', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                         >
                           <option value="">All Types</option>
                           <option value="medical">🚑 Medical</option>
@@ -320,7 +321,7 @@ export default function DashboardPageContent() {
                         <select
                           value={filters.severity}
                           onChange={(e) => handleFilterChange('severity', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                         >
                           <option value="">All Levels</option>
                           <option value="1">🟢 Level 1 - Low</option>
@@ -335,7 +336,7 @@ export default function DashboardPageContent() {
                         <select
                           value={filters.status}
                           onChange={(e) => handleFilterChange('status', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                         >
                           <option value="">All Status</option>
                           <option value="pending">⏳ Pending</option>
@@ -354,7 +355,7 @@ export default function DashboardPageContent() {
                           type="date"
                           value={filters.startDate}
                           onChange={(e) => handleFilterChange('startDate', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                         />
                       </div>
                       <div>
@@ -363,14 +364,14 @@ export default function DashboardPageContent() {
                           type="date"
                           value={filters.endDate}
                           onChange={(e) => handleFilterChange('endDate', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                         />
                       </div>
                     </div>
                     <div className="flex justify-end mt-4">
                       <button
                         onClick={clearFilters}
-                        className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 transition"
+                        className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
                       >
                         Clear Filters
                       </button>
@@ -443,7 +444,7 @@ export default function DashboardPageContent() {
                       <button
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                         disabled={currentPage === 1}
-                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       >
                         Previous
                       </button>
@@ -477,7 +478,7 @@ export default function DashboardPageContent() {
                       <button
                         onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                         disabled={currentPage === totalPages}
-                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       >
                         Next
                       </button>
@@ -516,13 +517,13 @@ export default function DashboardPageContent() {
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-lg font-semibold text-gray-900">Departments</h2>
-                  <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
+                  <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
                     + Add Department
                   </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {departments.map((dept) => (
-                    <div key={dept.id} className="border rounded-lg p-4 hover:shadow-md transition" style={{ borderTopColor: dept.color, borderTopWidth: '4px' }}>
+                    <div key={dept.id} className="border rounded-lg p-4 hover:shadow-md" style={{ borderTopColor: dept.color, borderTopWidth: '4px' }}>
                       <h3 className="font-semibold text-gray-900">{dept.name}</h3>
                       <p className="text-xs text-gray-500 mt-1">{dept.code}</p>
                       <p className="text-sm text-gray-600 mt-2">{dept.description}</p>
@@ -551,27 +552,14 @@ export default function DashboardPageContent() {
 
       {/* Incident Detail Modal */}
       {showDetailModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => setShowDetailModal(false)}></div>
-            <div className="relative bg-white rounded-lg max-w-md w-full p-6 shadow-xl">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">{selectedIncident.title}</h3>
-              <p className="text-gray-500 text-sm mb-4">{selectedIncident.description}</p>
-              <div className="grid grid-cols-2 gap-2 text-sm mb-4">
-                <div><span className="font-medium">Type:</span> {selectedIncident.incident_type}</div>
-                <div><span className="font-medium">Severity:</span> Level {selectedIncident.severity_level}</div>
-                <div><span className="font-medium">Status:</span> {selectedIncident.status}</div>
-                <div><span className="font-medium">Workflow:</span> Level {selectedIncident.current_workflow_level}/6</div>
-                <div className="col-span-2"><span className="font-medium">Reported:</span> {new Date(selectedIncident.created_at).toLocaleString()}</div>
-              </div>
-              <div className="flex justify-end">
-                <button onClick={() => setShowDetailModal(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <IncidentDetailModal
+          incident={selectedIncident}
+          token={token}
+          onClose={() => setShowDetailModal(false)}
+          onRefresh={refreshData}
+          currentUserRole={user?.role || 'resident'}
+          currentUserId={user?.id || ''}
+        />
       )}
     </div>
   );

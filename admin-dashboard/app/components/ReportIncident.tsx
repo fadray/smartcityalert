@@ -140,7 +140,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
         location: formData.location,
         latitude: 0,
         longitude: 0,
-        images: uploadedImages,
+        images: uploadedImages || [],
       };
       
       const res = await api.post('/api/incidents', payload);

@@ -1,10 +1,12 @@
-import { Controller, Get, Post, Body, Param, Put, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, UseGuards, Request, Logger } from '@nestjs/common';
 import { IncidentsService } from './incidents.service';
 import { AuthGuard } from '@nestjs/passport';
 
 @Controller('api/incidents')
 @UseGuards(AuthGuard('jwt'))
 export class IncidentsController {
+  private readonly logger = new Logger(IncidentsController.name);
+
   constructor(private incidentsService: IncidentsService) {}
 
   @Get()
@@ -42,8 +44,26 @@ export class IncidentsController {
   }
 
   @Put(':id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: string) {
-    return this.incidentsService.updateStatus(id, status);
+  updateStatus(@Param('id') id: string, @Body('status') status: string, @Request() req) {
+    return this.incidentsService.updateStatus(id, status, req.user?.id, req.user?.full_name, req.user?.role);
+  }
+
+  @Post(':id/assign')
+  async assignToUser(@Param('id') id: string, @Body() body: any, @Request() req) {
+    this.logger.log(`Assigning incident ${id} to ${body.assigneeType} ${body.assigneeId}`);
+    return this.incidentsService.assignToUser(
+      id, 
+      body.assigneeId, 
+      body.assigneeType, 
+      body.comments, 
+      req.user?.id,
+      req.user?.full_name
+    );
+  }
+
+  @Put(':id/workflow')
+  updateWorkflow(@Param('id') id: string, @Body('level') level: number, @Request() req) {
+    return this.incidentsService.updateWorkflowLevel(id, level, req.user?.id, req.user?.full_name);
   }
 
   @Post(':id/resolution-proof')
@@ -86,11 +106,6 @@ export class IncidentsController {
     @Request() req
   ) {
     return this.incidentsService.rejectResolution(id, req.user?.id, req.user?.full_name, comments);
-  }
-
-  @Put(':id/workflow')
-  updateWorkflow(@Param('id') id: string, @Body('level') level: number) {
-    return this.incidentsService.updateWorkflowLevel(id, level);
   }
 
   private getLevelForRole(role: string): number {

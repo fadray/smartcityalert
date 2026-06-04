@@ -33,6 +33,9 @@ export interface Incident {
   escalation_history: any[];
   resolution_proofs: any[];
   approvals: any[];
+  reported_by?: User;
+  assigned_to?: User;
+  location?: string;
   created_at: string;
   resolved_at?: string;
 }
