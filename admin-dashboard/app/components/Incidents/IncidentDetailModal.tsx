@@ -279,14 +279,29 @@ export default function IncidentDetailModal({
     return 'bg-yellow-100 text-yellow-800';
   };
 
+  // const getAssignedToName = () => {
+  //   if (currentIncident.assigned_to?.user?.full_name) {
+  //     return currentIncident.assigned_to.user.full_name;
+  //   }
+  //   if (currentIncident.assigned_to_id) {
+  //     const assignee = availableAssignees.find(a => a.id === currentIncident.assigned_to_id);
+  //     if (assignee) return assignee.name;
+  //   }
+  //   return 'Unassigned';
+  // };
+
   const getAssignedToName = () => {
-    if (currentIncident.assigned_to?.user?.full_name) {
-      return currentIncident.assigned_to.user.full_name;
+    if (currentIncident.assigned_to?.full_name) {
+      return currentIncident.assigned_to.full_name;
     }
+
     if (currentIncident.assigned_to_id) {
-      const assignee = availableAssignees.find(a => a.id === currentIncident.assigned_to_id);
+      const assignee = availableAssignees.find(
+        a => a.id === currentIncident.assigned_to_id
+      );
       if (assignee) return assignee.name;
     }
+
     return 'Unassigned';
   };
 

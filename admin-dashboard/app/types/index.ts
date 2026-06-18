@@ -38,6 +38,7 @@ export interface Incident {
   location?: string;
   created_at: string;
   resolved_at?: string;
+  assigned_to_id?: string;
 }
 
 export interface Stats {
