@@ -39,9 +39,20 @@ export default function DashboardPageContent() {
     closedThisMonth: 0,
     dueIncidents: 0,
   });
-  const [monthlyData, setMonthlyData] = useState([]);
-  const [severityData, setSeverityData] = useState([]);
-  const [typeData, setTypeData] = useState([]);
+  //const [monthlyData, setMonthlyData] = useState([]);
+  //const [severityData, setSeverityData] = useState([]);
+  //const [typeData, setTypeData] = useState([]);
+  const [monthlyData, setMonthlyData] = useState<
+    { month: string; incidents: number; resolved: number }[]
+  >([]);
+
+  const [severityData, setSeverityData] = useState<
+    { name: string; value: number; color: string }[]
+  >([]);
+
+  const [typeData, setTypeData] = useState<
+    { name: string; value: number; color: string }[]
+  >([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [filters, setFilters] = useState({
