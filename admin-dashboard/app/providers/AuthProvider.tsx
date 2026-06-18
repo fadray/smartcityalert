@@ -12,6 +12,8 @@ interface User {
   email?: string;
   role: string;
   department_id?: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 interface AuthContextType {
