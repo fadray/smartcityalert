@@ -222,7 +222,7 @@ export default function DashboardPageContent() {
         pendingCount={pendingApprovals.length}
       />
       <div className="lg:pl-72">
-        <Header setSidebarOpen={setSidebarOpen} user={user} onLogout={handleLogout} />
+        <Header setSidebarOpen={setSidebarOpen} user={user} onLogout={handleLogout} token={token}/>
         <main className="py-8">
           <div className="px-4 sm:px-6 lg:px-8">
             {activeTab === 'dashboard' && (
