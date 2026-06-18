@@ -11,6 +11,7 @@
     "@headlessui/react": "^2.2.10",
     "@heroicons/react": "^2.2.0",
     "@react-pdf/renderer": "^4.5.1",
+    "@tremor/react": "^3.18.7",
     "axios": "^1.16.1",
     "date-fns": "^4.4.0",
     "file-saver": "^2.0.5",
