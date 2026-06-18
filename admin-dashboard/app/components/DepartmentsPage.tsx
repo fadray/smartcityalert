@@ -29,6 +29,7 @@ interface User {
   email: string;
   role: string;
   is_active: boolean;
+  department_id?: string;
 }
 
 export default function DepartmentsPage() {
