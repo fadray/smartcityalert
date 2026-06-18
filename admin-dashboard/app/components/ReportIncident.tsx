@@ -61,7 +61,8 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
       formData.append('image', file);
       try {
         const res = await api.post('/api/uploads/image', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 30000,
         });
         setUploadedImages(prev => [...prev, res.data.url]);
       } catch (error) {
@@ -95,15 +96,10 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
     return true;
   };
 
-  const getSeverityLabel = (level: number) => {
-    const labels: Record<number, string> = {
-      1: 'Low - Minor issue',
-      2: 'Medium - Moderate concern',
-      3: 'High - Serious incident',
-      4: 'Critical - Immediate attention',
-      5: 'Catastrophic - Emergency',
-    };
-    return labels[level] || 'Unknown';
+  const getSeverityColor = (level: number) => {
+    if (level >= 4) return 'bg-red-100 text-red-700';
+    if (level >= 3) return 'bg-orange-100 text-orange-700';
+    return 'bg-yellow-100 text-yellow-700';
   };
 
   const getTypeIcon = (type: string) => {
@@ -114,12 +110,6 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
       maintenance: '🔧',
     };
     return icons[type] || '📌';
-  };
-
-  const getSeverityColor = (level: number) => {
-    if (level >= 4) return 'bg-red-100 text-red-700';
-    if (level >= 3) return 'bg-orange-100 text-orange-700';
-    return 'bg-yellow-100 text-yellow-700';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -140,16 +130,15 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
         location: formData.location,
         latitude: 0,
         longitude: 0,
-        images: uploadedImages || [],
+        images: uploadedImages,
       };
       
-      const res = await api.post('/api/incidents', payload);
+      const res = await api.post('/api/incidents', payload, { timeout: 30000 });
       console.log('Incident created:', res.data);
       
       // Get department name
       const department = departments.find(d => d.id === formData.department_id);
       
-      // Store submitted data for modal
       setSubmittedData({
         id: res.data.id,
         title: formData.title,
@@ -172,7 +161,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
       });
       setUploadedImages([]);
       
-      // Show modal - DO NOT call onSuccess here
+      // Show modal - DO NOT refresh data automatically
       setShowSuccessModal(true);
       
     } catch (error: any) {
@@ -186,7 +175,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
   const closeModal = () => {
     setShowSuccessModal(false);
     setSubmittedData(null);
-    // Only refresh data when modal is closed
+    // Only refresh data when modal is closed by user
     if (onSuccess) {
       onSuccess();
     }
@@ -195,11 +184,11 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
   const viewIncidents = () => {
     setShowSuccessModal(false);
     setSubmittedData(null);
-    // Refresh data first
+    // Refresh data before navigating
     if (onSuccess) {
       onSuccess();
     }
-    // Then navigate
+    // Navigate to incidents tab
     setTimeout(() => {
       window.location.href = '/dashboard?tab=incidents';
     }, 100);
@@ -232,6 +221,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 placeholder="e.g., Power Outage in Building A"
+                disabled={loading}
               />
             </div>
 
@@ -246,6 +236,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
                 rows={4}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 placeholder="Provide detailed information about the incident..."
+                disabled={loading}
               />
             </div>
 
@@ -258,6 +249,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
                   value={formData.incident_type}
                   onChange={(e) => setFormData({ ...formData, incident_type: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  disabled={loading}
                 >
                   <option value="medical">🚑 Medical Emergency</option>
                   <option value="fire">🔥 Fire Outbreak</option>
@@ -274,6 +266,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
                   value={formData.severity_level}
                   onChange={(e) => setFormData({ ...formData, severity_level: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  disabled={loading}
                 >
                   <option value="1">🟢 Level 1 - Low</option>
                   <option value="2">🔵 Level 2 - Medium</option>
@@ -293,6 +286,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
                   value={formData.department_id}
                   onChange={(e) => setFormData({ ...formData, department_id: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  disabled={loading}
                 >
                   {departments.map(dept => (
                     <option key={dept.id} value={dept.id}>{dept.name}</option>
@@ -311,6 +305,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
                   onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   placeholder="e.g., Building A, Floor 3, Room 305"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -326,7 +321,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
                   <div className="flex text-sm text-gray-600">
                     <label className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
                       <span>Upload photos</span>
-                      <input type="file" className="sr-only" multiple accept="image/*" onChange={handleImageUpload} />
+                      <input type="file" className="sr-only" multiple accept="image/*" onChange={handleImageUpload} disabled={loading} />
                     </label>
                     <p className="pl-1">or drag and drop</p>
                   </div>
@@ -343,6 +338,7 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
                         type="button"
                         onClick={() => removeImage(index)}
                         className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition"
+                        disabled={loading}
                       >
                         <XMarkIcon className="h-4 w-4" />
                       </button>
@@ -368,22 +364,33 @@ export default function ReportIncident({ token, onSuccess }: ReportIncidentProps
                   setError(null);
                 }}
                 className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition"
+                disabled={loading}
               >
                 Clear Form
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-medium hover:shadow-lg transition disabled:opacity-50"
+                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-medium hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Submitting...' : 'Submit Incident Report'}
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Submitting...
+                  </span>
+                ) : (
+                  'Submit Incident Report'
+                )}
               </button>
             </div>
           </form>
         </div>
       </div>
 
-      {/* Success Modal - Manual close only */}
+      {/* Success Modal - Stays open until manually closed */}
       <Transition appear show={showSuccessModal} as={Fragment}>
         <Dialog as="div" className="relative z-50" onClose={() => {}} static>
           <Transition.Child

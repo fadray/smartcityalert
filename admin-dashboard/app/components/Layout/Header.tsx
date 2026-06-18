@@ -1,17 +1,19 @@
 'use client';
 
-import { Bars3Icon, BellIcon, UserCircleIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, UserCircleIcon } from '@heroicons/react/24/outline';
 import { Menu, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import { User } from '../../types';
+import NotificationBell from '../Notifications/NotificationBell';
 
 interface HeaderProps {
   setSidebarOpen: (open: boolean) => void;
   user: User | null;
   onLogout: () => void;
+  token: string;
 }
 
-export default function Header({ setSidebarOpen, user, onLogout }: HeaderProps) {
+export default function Header({ setSidebarOpen, user, onLogout, token }: HeaderProps) {
   return (
     <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
       <button type="button" className="-m-2.5 p-2.5 text-gray-700 lg:hidden" onClick={() => setSidebarOpen(true)}>
@@ -33,10 +35,7 @@ export default function Header({ setSidebarOpen, user, onLogout }: HeaderProps) 
         </div>
         
         <div className="flex items-center gap-x-4 lg:gap-x-6">
-          <button type="button" className="-m-2.5 p-2.5 text-gray-400 hover:text-gray-500">
-            <span className="sr-only">View notifications</span>
-            <BellIcon className="h-6 w-6" aria-hidden="true" />
-          </button>
+          <NotificationBell token={token} userId={user?.id || ''} />
 
           <Menu as="div" className="relative">
             <Menu.Button className="-m-1.5 flex items-center p-1.5">

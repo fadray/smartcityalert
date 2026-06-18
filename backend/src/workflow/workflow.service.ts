@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Incident } from '../incidents/incident.entity';
@@ -6,6 +6,7 @@ import { EscalationRule } from './workflow.interface';
 
 @Injectable()
 export class WorkflowService {
+  private readonly logger = new Logger(WorkflowService.name);
   private escalationRules: EscalationRule[] = [
     { id: '1', level: 1, role: 'responder', timeout_minutes: 30, next_role: 'supervisor', is_active: true },
     { id: '2', level: 2, role: 'supervisor', timeout_minutes: 60, next_role: 'hod', is_active: true },

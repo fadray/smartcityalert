@@ -11,6 +11,5 @@ import { Responder } from '../responders/responder.entity';
   imports: [TypeOrmModule.forFeature([Incident, User, Department, Responder])],
   providers: [ReportsService],
   controllers: [ReportsController],
-  exports: [ReportsService],
 })
 export class ReportsModule {}

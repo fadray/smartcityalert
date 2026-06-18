@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Incident } from './incident.entity';
@@ -23,9 +23,11 @@ interface HistoryEntry {
 
 @Injectable()
 export class IncidentsService {
+  private readonly logger = new Logger(IncidentsService.name); // ✅ Add logger
+
   constructor(
     @InjectRepository(Incident)
-    private incidentRepository: Repository<Incident>,
+    private incidentRepository: Repository<Incident>, // ✅ Keep as incidentRepository
     @InjectRepository(User)
     private userRepository: Repository<User>,
     @InjectRepository(Responder)
@@ -107,7 +109,7 @@ export class IncidentsService {
     
     const oldStatus = incident.status;
     
-    let history: HistoryEntry[] = [];
+    let history: any[] = [];
     if (incident.escalation_history) {
       try {
         if (typeof incident.escalation_history === 'string') {
@@ -118,7 +120,7 @@ export class IncidentsService {
       } catch (e) {}
     }
     
-    const newEntry: HistoryEntry = {
+    const newEntry = {
       id: Date.now().toString(),
       level: incident.current_workflow_level,
       timestamp: new Date().toISOString(),
@@ -139,7 +141,6 @@ export class IncidentsService {
     
     const updatedIncident = await this.findOne(id);
     
-    // Send notification for status change
     if (userId) {
       const user = await this.userRepository.findOne({ where: { id: userId } });
       if (user) {
@@ -156,7 +157,7 @@ export class IncidentsService {
     
     const oldLevel = incident.current_workflow_level;
     
-    let history: HistoryEntry[] = [];
+    let history: any[] = [];
     if (incident.escalation_history) {
       try {
         if (typeof incident.escalation_history === 'string') {
@@ -186,8 +187,6 @@ export class IncidentsService {
     });
     
     const updatedIncident = await this.findOne(id);
-    
-    // Send escalation notification
     await this.notificationsService.notifyEscalation(updatedIncident, level);
     
     return updatedIncident;
@@ -221,7 +220,7 @@ export class IncidentsService {
       assigneeUser = responder.user;
     }
     
-    let history: HistoryEntry[] = [];
+    let history: any[] = [];
     if (incident.escalation_history) {
       try {
         if (typeof incident.escalation_history === 'string') {
@@ -256,7 +255,6 @@ export class IncidentsService {
     
     const updatedIncident = await this.findOne(incidentId);
     
-    // Send assignment notification
     const assignedBy = await this.userRepository.findOne({ where: { id: assignedById } });
     if (assigneeUser && assignedBy) {
       await this.notificationsService.notifyAssignment(updatedIncident, assigneeUser, assignedBy);
@@ -298,7 +296,7 @@ export class IncidentsService {
       uploaded_at: new Date().toISOString(),
     });
     
-    let history: HistoryEntry[] = [];
+    let history: any[] = [];
     if (incident.escalation_history) {
       try {
         if (typeof incident.escalation_history === 'string') {
@@ -328,8 +326,6 @@ export class IncidentsService {
     });
     
     const updatedIncident = await this.findOne(id);
-    
-    // Send resolution proof notification
     const submitter = await this.userRepository.findOne({ where: { id: userId } });
     if (submitter) {
       await this.notificationsService.notifyResolutionProof(updatedIncident, submitter);
@@ -371,7 +367,7 @@ export class IncidentsService {
       approved_at: new Date().toISOString(),
     });
     
-    let history: HistoryEntry[] = [];
+    let history: any[] = [];
     if (incident.escalation_history) {
       try {
         if (typeof incident.escalation_history === 'string') {
@@ -409,8 +405,6 @@ export class IncidentsService {
     
     await this.incidentRepository.update(id, updateData);
     const updatedIncident = await this.findOne(id);
-    
-    // Send approval notification
     const approver = await this.userRepository.findOne({ where: { id: approverId } });
     if (approver) {
       await this.notificationsService.notifyApproval(updatedIncident, approver, 'approved');
@@ -428,7 +422,7 @@ export class IncidentsService {
     const incident = await this.incidentRepository.findOne({ where: { id } });
     if (!incident) throw new NotFoundException('Incident not found');
     
-    let history: HistoryEntry[] = [];
+    let history: any[] = [];
     if (incident.escalation_history) {
       try {
         if (typeof incident.escalation_history === 'string') {
@@ -455,9 +449,8 @@ export class IncidentsService {
       escalation_history: JSON.stringify(history),
       updated_at: new Date(),
     });
-    const updatedIncident = await this.findOne(id);
     
-    // Send rejection notification
+    const updatedIncident = await this.findOne(id);
     const approver = await this.userRepository.findOne({ where: { id: approverId } });
     if (approver) {
       await this.notificationsService.notifyApproval(updatedIncident, approver, 'rejected');
@@ -507,5 +500,59 @@ export class IncidentsService {
         department: true,
       },
     });
+  }
+
+ // ✅ CORRECTED createFromWhatsApp method - NO null values
+async createFromWhatsApp(data: {
+  phoneNumber: string;
+  message: string;
+  detectedType: string;
+  departmentId?: string;
+  severity?: number;
+  locationHint?: string;
+  mediaUrl?: string;
+  userId?: string;
+}) {
+  // Use insert with default values instead of null
+  const result = await this.incidentRepository.insert({
+    title: `${data.detectedType.toUpperCase()} Report via WhatsApp`,
+    description: data.message,
+    incident_type: data.detectedType,
+    department_id: data.departmentId || '',
+    severity_level: data.severity || 2,
+    status: 'pending',
+    latitude: 0,  // Changed from null to 0
+    longitude: 0, // Changed from null to 0
+    images: data.mediaUrl ? JSON.stringify([data.mediaUrl]) : JSON.stringify([]), // Changed from null to empty array
+    reported_by_id: data.userId || '',
+    current_workflow_level: 1,
+    escalation_history: JSON.stringify([{
+      timestamp: new Date().toISOString(),
+      source: 'whatsapp',
+      location_hint: data.locationHint || '',
+      phone_number: data.phoneNumber,
+    }]),
+    resolution_proofs: JSON.stringify([]),
+    approvals: JSON.stringify([]),
+  });
+  
+  const id = result.identifiers[0].id;
+  const saved = await this.findOne(id);
+  
+  this.logger.log(`WhatsApp incident created: ${saved.id} from ${data.phoneNumber}`);
+  
+  // Send notification for new WhatsApp incident
+  await this.notificationsService.notifyNewIncident(saved);
+  
+  return saved;
+}
+
+  // ✅ Additional helper method for WhatsApp incidents
+  async findByWhatsAppNumber(phoneNumber: string): Promise<Incident[]> {
+    return this.incidentRepository
+      .createQueryBuilder('incident')
+      .where('incident.escalation_history::text LIKE :phone', { phone: `%${phoneNumber}%` })
+      .orderBy('incident.created_at', 'DESC')
+      .getMany();
   }
 }

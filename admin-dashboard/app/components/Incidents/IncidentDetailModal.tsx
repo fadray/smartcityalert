@@ -63,35 +63,19 @@ export default function IncidentDetailModal({
   const [loadingAssignees, setLoadingAssignees] = useState(false);
   const [currentIncident, setCurrentIncident] = useState<Incident>(incident);
   const [updateTrail, setUpdateTrail] = useState<UpdateTrailItem[]>([]);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const refreshIncidentData = async () => {
-    const api = apiClient(token);
-    try {
-      const response = await api.get(`/api/incidents/${currentIncident.id}`);
-      if (response.data) {
-        setCurrentIncident(response.data);
-        generateCompleteUpdateTrail(response.data);
-        setSelectedStatus(response.data.status);
-      }
-    } catch (error) {
-      console.error('Failed to refresh incident:', error);
-    }
-  };
 
   useEffect(() => {
     if (incident) {
       setCurrentIncident(incident);
       setSelectedStatus(incident.status);
-      generateCompleteUpdateTrail(incident);
       fetchAvailableAssignees();
+      generateCompleteUpdateTrail(incident);
     }
-  }, [incident, refreshKey]);
+  }, [incident]);
 
-  const generateCompleteUpdateTrail = (inc: Incident) => {
+  const generateCompleteUpdateTrail = async (inc: Incident) => {
     const trail: UpdateTrailItem[] = [];
     
-    // 1. Creation event
     trail.push({
       id: 'creation',
       type: 'creation',
@@ -102,73 +86,51 @@ export default function IncidentDetailModal({
       details: `Incident reported: ${inc.title}`,
     });
     
-    // 2. Parse ALL escalation history entries
     if (inc.escalation_history) {
       try {
         let history = inc.escalation_history;
         if (typeof history === 'string') {
           history = JSON.parse(history);
         }
-        if (Array.isArray(history) && history.length > 0) {
-          console.log('Found history entries:', history.length);
+        if (Array.isArray(history)) {
           history.forEach((event: any, idx: number) => {
             let action = '';
             let type: any = 'escalation';
-            let details = event.reason || event.comments || '';
             
             if (event.action === 'status_change') {
               action = `Status changed from ${event.old_value} to ${event.new_value}`;
               type = 'status';
-              details = event.reason || `Status updated`;
             } else if (event.action === 'assignment') {
-              action = `Assigned to ${event.assignee_name || event.reason?.split('to ')[1] || 'someone'}`;
+              action = `Assigned to ${event.assignee_name || 'someone'}`;
               type = 'assignment';
-              details = event.comments || event.reason || `Assigned to new person`;
             } else if (event.action === 'workflow_change') {
               action = `Workflow level changed from ${event.old_value} to ${event.new_value}`;
               type = 'escalation';
-              details = event.reason || `Workflow level updated`;
             } else if (event.action === 'resolution_proof') {
               action = `Resolution proof submitted`;
               type = 'resolution';
-              details = event.reason || event.proof_description || 'Proof uploaded';
             } else if (event.action === 'approval') {
               action = `Resolution approved`;
               type = 'approval';
-              details = event.comments || event.reason || 'Approved';
-            } else if (event.action === 'rejection') {
-              action = `Resolution rejected`;
-              type = 'status';
-              details = event.reason || 'Rejected';
-            } else if (event.reason && event.reason.includes('Auto-escalated')) {
-              action = `Auto-escalated to Level ${event.level || 'next'}`;
-              type = 'escalation';
-              details = event.reason;
             } else {
-              action = event.reason || `Updated to Level ${event.level}`;
-              type = 'escalation';
-              details = event.comments || '';
+              action = event.reason || `Event occurred`;
             }
             
             trail.push({
-              id: `history-${idx}-${event.id || Date.now()}`,
+              id: `history-${idx}`,
               type: type,
               action: action,
-              user: event.user_name || event.user || 'System',
-              userRole: event.user_role || event.role || 'System',
+              user: event.user_name || 'System',
+              userRole: event.user_role || 'System',
               timestamp: new Date(event.timestamp),
-              details: details,
+              details: event.comments || event.reason || '',
             });
           });
         }
-      } catch (e) {
-        console.error('Failed to parse escalation history:', e);
-      }
+      } catch (e) {}
     }
     
-    // Sort by timestamp (oldest first)
     trail.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-    console.log('Total trail entries:', trail.length);
     setUpdateTrail(trail);
   };
 
@@ -220,6 +182,20 @@ export default function IncidentDetailModal({
     }
   };
 
+  const refreshIncidentData = async () => {
+    const api = apiClient(token);
+    try {
+      const response = await api.get(`/api/incidents/${currentIncident.id}`);
+      if (response.data) {
+        setCurrentIncident(response.data);
+        generateCompleteUpdateTrail(response.data);
+        setSelectedStatus(response.data.status);
+      }
+    } catch (error) {
+      console.error('Failed to refresh incident:', error);
+    }
+  };
+
   const handleStatusUpdate = async (newStatus: string) => {
     setLoading(true);
     const api = apiClient(token);
@@ -228,6 +204,8 @@ export default function IncidentDetailModal({
       alert(`Incident status updated to ${newStatus}`);
       await refreshIncidentData();
       onRefresh();
+      // Close modal after successful update
+      onClose();
     } catch (error) {
       console.error('Failed to update status:', error);
       alert('Failed to update status');
@@ -257,6 +235,8 @@ export default function IncidentDetailModal({
       await refreshIncidentData();
       onRefresh();
       fetchAvailableAssignees();
+      // Close modal after successful assignment
+      onClose();
     } catch (error: any) {
       console.error('Failed to assign:', error);
       alert(error.response?.data?.message || 'Failed to assign. Please try again.');
@@ -475,7 +455,7 @@ export default function IncidentDetailModal({
               </div>
             )}
 
-            {/* Update Trail / Activity Log */}
+            {/* Update Trail */}
             <div>
               <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
                 <ClockIcon className="h-4 w-4" />
@@ -565,7 +545,7 @@ export default function IncidentDetailModal({
                       }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="">Select a person from {currentIncident.department?.name || 'this department'}...</option>
+                      <option value="">Select a person...</option>
                       {availableAssignees.some(a => a.type === 'user') && (
                         <optgroup label="👔 Users">
                           {availableAssignees.filter(a => a.type === 'user').map(assignee => (

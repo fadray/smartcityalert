@@ -6,11 +6,11 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true })
-  phone: string;
-
-  @Column({ unique: true, nullable: true })
+  @Column({ unique: true, nullable: true })  // Allow null
   email: string;
+
+  @Column({ unique: true, nullable: true })  // Allow null
+  phone: string;
 
   @Column()
   full_name: string;

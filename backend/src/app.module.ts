@@ -14,11 +14,15 @@ import { WorkflowModule } from './workflow/workflow.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ReportsModule } from './reports/reports.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module'; // Add this
 import { Department } from './departments/department.entity';
 import { User } from './users/user.entity';
 import { Incident } from './incidents/incident.entity';
 import { Responder } from './responders/responder.entity';
 import { Notification } from './notifications/notification.entity';
+import { WorkflowConfig } from './workflow/workflow-config.entity';
+import { WhatsAppMessage } from './whatsapp/whatsapp-message.entity'; // Add this
 
 @Module({
   imports: [
@@ -35,7 +39,7 @@ import { Notification } from './notifications/notification.entity';
         username: configService.get('DB_USER', 'smartcity'),
         password: configService.get('DB_PASSWORD', 'SecurePass123!'),
         database: configService.get('DB_NAME', 'smartcityalert'),
-        entities: [Department, User, Incident, Responder, Notification],
+        entities: [Department, User, Incident, Responder, Notification, WorkflowConfig, WhatsAppMessage], // Add WhatsAppMessage
         synchronize: false,
         logging: true,
       }),
@@ -54,6 +58,8 @@ import { Notification } from './notifications/notification.entity';
     PermissionsModule,
     MaintenanceModule,
     NotificationsModule,
+    ReportsModule,
+    WhatsAppModule, // Add this
   ],
 })
 export class AppModule {}

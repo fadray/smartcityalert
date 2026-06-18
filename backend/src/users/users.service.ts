@@ -45,7 +45,6 @@ export class UsersService {
     });
     const id = result.identifiers[0].id;
     
-    // Send welcome email if email is provided
     if (createUserDto.email) {
       try {
         await this.emailService.sendWelcomeEmail(
@@ -88,12 +87,10 @@ export class UsersService {
     const user = await this.userRepository.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
     
-    // Generate a temporary password
     const tempPassword = Math.random().toString(36).slice(-8);
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
     await this.userRepository.update(id, { password: hashedPassword });
     
-    // Send email if email exists
     if (user.email) {
       try {
         await this.emailService.sendPasswordResetEmail(
@@ -122,5 +119,58 @@ export class UsersService {
     
     await this.userRepository.update(id, { is_active: !user.is_active });
     return this.findOne(id);
+  }
+
+  // ✅ WORKING WhatsApp methods
+  async createFromWhatsApp(data: { phone: string; name: string; role?: string }): Promise<User> {
+    // Check if user already exists
+    const existingUser = await this.userRepository.findOne({ 
+      where: { phone: data.phone } 
+    });
+    
+    if (existingUser) {
+      return existingUser;
+    }
+    
+    // Generate a random password for WhatsApp users
+    const tempPassword = Math.random().toString(36).slice(-8);
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+    
+    // Use insert instead of create/save to avoid type issues
+    const result = await this.userRepository.insert({
+      phone: data.phone,
+      full_name: data.name,
+      email: '',
+      role: data.role || 'resident',
+      is_active: true,
+      password: hashedPassword,
+    });
+    
+    const id = result.identifiers[0].id;
+    return this.findOne(id);
+  }
+
+  async findByPhone(phone: string): Promise<User | null> {
+    const user = await this.userRepository.findOne({ 
+      where: { phone },
+      relations: {
+        department: true,
+      },
+    });
+    return user || null;
+  }
+
+  async findOrCreateFromWhatsApp(phone: string, name?: string): Promise<User> {
+    let user = await this.findByPhone(phone);
+    
+    if (!user) {
+      user = await this.createFromWhatsApp({
+        phone: phone,
+        name: name || `WhatsApp User ${phone.slice(-4)}`,
+        role: 'resident',
+      });
+    }
+    
+    return user;
   }
 }

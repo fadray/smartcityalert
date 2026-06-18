@@ -11,7 +11,7 @@ export class EmailService {
     // For Gmail, you'll need to use an App Password
     this.transporter = nodemailer.createTransport({
       host: this.configService.get('SMTP_HOST', 'smtp.gmail.com'),
-      port: parseInt(this.configService.get('SMTP_PORT', '587')),
+      port: parseInt(this.configService.get('SMTP_PORT', '465')),
       secure: false,
       auth: {
         user: this.configService.get('SMTP_USER'),

@@ -10,16 +10,23 @@
   "dependencies": {
     "@headlessui/react": "^2.2.10",
     "@heroicons/react": "^2.2.0",
+    "@react-pdf/renderer": "^4.5.1",
     "axios": "^1.16.1",
     "date-fns": "^4.4.0",
+    "file-saver": "^2.0.5",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "next": "14.0.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-hot-toast": "^2.6.0",
+    "react-pdf": "^10.4.1",
     "recharts": "^3.8.1",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/file-saver": "^2.0.7",
     "@types/node": "^20.0.0",
     "@types/react": "^18.0.0",
     "autoprefixer": "^10.4.16",

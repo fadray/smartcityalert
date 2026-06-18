@@ -6,10 +6,11 @@ import { EmailService } from './email.service';
 import { Notification } from './notification.entity';
 import { User } from '../users/user.entity';
 import { Department } from '../departments/department.entity';
+import { WebsocketGateway } from '../websocket/websocket.gateway';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Notification, User, Department])],
-  providers: [NotificationsService, EmailService],
+  providers: [NotificationsService, EmailService, WebsocketGateway],
   controllers: [NotificationsController],
   exports: [NotificationsService],
 })

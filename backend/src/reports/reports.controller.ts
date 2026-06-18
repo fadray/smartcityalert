@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards, Res } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -33,18 +33,18 @@ export class ReportsController {
     return this.reportsService.getIncidentTypeReport(start, end);
   }
 
-  @Get('by-responder')
-  getResponderReport(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
-    const start = startDate ? new Date(startDate) : undefined;
-    const end = endDate ? new Date(endDate) : undefined;
-    return this.reportsService.getResponderReport(start, end);
-  }
-
   @Get('by-department')
   getDepartmentReport(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
     const start = startDate ? new Date(startDate) : undefined;
     const end = endDate ? new Date(endDate) : undefined;
     return this.reportsService.getDepartmentReport(start, end);
+  }
+
+  @Get('by-responder')
+  getResponderReport(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+    return this.reportsService.getResponderReport(start, end);
   }
 
   @Get('success-rate')
@@ -54,27 +54,8 @@ export class ReportsController {
     return this.reportsService.getSuccessRateReport(start, end);
   }
 
-  @Get('combined')
-  getCombinedReport(@Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
-    const start = startDate ? new Date(startDate) : undefined;
-    const end = endDate ? new Date(endDate) : undefined;
-    return this.reportsService.getCombinedReport(start, end);
-  }
-
-  @Get('export')
-  async exportReport(
-    @Query('type') type: string,
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
-    @Res() res: any,
-  ) {
-    const csv = await this.reportsService.exportToCSV(type, {
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
-    });
-    
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=${type}_report_${new Date().toISOString().split('T')[0]}.csv`);
-    res.send(csv);
+  @Get('trends')
+  async getTrends(@Query('startDate') startDate: string, @Query('endDate') endDate: string) {
+    return this.reportsService.getTrends(startDate, endDate);
   }
 }

@@ -6,6 +6,7 @@ import { User } from '../users/user.entity';
 import { EmailService } from './email.service';
 import { Incident } from '../incidents/incident.entity';
 import { Department } from '../departments/department.entity';
+import { WebsocketGateway } from '../websocket/websocket.gateway';
 
 @Injectable()
 export class NotificationsService {
@@ -19,25 +20,46 @@ export class NotificationsService {
     @InjectRepository(Department)
     private departmentRepository: Repository<Department>,
     private emailService: EmailService,
+    private websocketGateway: WebsocketGateway,
   ) {}
 
   async createNotification(
     userId: string,
     title: string,
     message: string,
-    type: NotificationType,
+    type: string,
     incidentId?: string,
-    priority: NotificationPriority = NotificationPriority.MEDIUM,
+    priority: string = NotificationPriority.MEDIUM,
   ): Promise<Notification> {
-    const notification = this.notificationRepository.create({
-      user_id: userId,
-      title,
-      message,
-      type,
-      incident_id: incidentId,
-      priority,
-    });
-    return this.notificationRepository.save(notification);
+    try {
+      const notification = this.notificationRepository.create({
+        user_id: userId,
+        title,
+        message,
+        type,
+        incident_id: incidentId,
+        priority,
+        is_read: false,
+        email_sent: false,
+      });
+      const saved = await this.notificationRepository.save(notification);
+      
+      // Send real-time notification via WebSocket
+      this.websocketGateway.sendNotificationToUser(userId, {
+        id: saved.id,
+        title: saved.title,
+        message: saved.message,
+        type: saved.type,
+        priority: saved.priority,
+        created_at: saved.created_at,
+        incident_id: saved.incident_id,
+      });
+      
+      return saved;
+    } catch (error) {
+      this.logger.error(`Failed to create notification: ${error.message}`);
+      throw error;
+    }
   }
 
   async getUnreadNotifications(userId: string): Promise<Notification[]> {
@@ -69,55 +91,53 @@ export class NotificationsService {
   }
 
   async notifyNewIncident(incident: Incident): Promise<void> {
-    // Notify all users in the same department
-    const users = await this.getUsersInDepartment(incident.department_id);
-    
-    for (const user of users) {
-      // Skip the reporter
-      if (user.id === incident.reported_by_id) continue;
+    try {
+      const users = await this.getUsersInDepartment(incident.department_id);
       
-      // Create in-app notification
-      await this.createNotification(
-        user.id,
-        '🚨 New Incident Reported',
-        `${incident.title} - ${incident.incident_type} - Severity Level ${incident.severity_level}`,
-        NotificationType.NEW_INCIDENT,
-        incident.id,
-        incident.severity_level >= 4 ? NotificationPriority.HIGH : NotificationPriority.MEDIUM,
-      );
-      
-      // Send email if user has email
-      if (user.email) {
-        await this.emailService.sendNewIncidentNotification(
-          user.email,
-          user.full_name,
-          incident,
+      for (const user of users) {
+        if (user.id === incident.reported_by_id) continue;
+        
+        await this.createNotification(
+          user.id,
+          '🚨 New Incident Reported',
+          `${incident.title} - ${incident.incident_type} - Severity Level ${incident.severity_level}`,
+          NotificationType.NEW_INCIDENT,
+          incident.id,
+          incident.severity_level >= 4 ? NotificationPriority.HIGH : NotificationPriority.MEDIUM,
         );
+        
+        if (user.email) {
+          this.emailService.sendNewIncidentNotification(
+            user.email,
+            user.full_name,
+            incident,
+          );
+        }
       }
+      
+      this.logger.log(`Sent new incident notifications to ${users.length} users`);
+    } catch (error) {
+      this.logger.error(`Failed to send new incident notifications: ${error.message}`);
     }
-    
-    this.logger.log(`Sent new incident notifications to ${users.length} users`);
   }
 
   async notifyStatusChange(incident: Incident, oldStatus: string, newStatus: string, changedBy: User): Promise<void> {
-    // Get all users in the department
-    const users = await this.getUsersInDepartment(incident.department_id);
-    
-    for (const user of users) {
-      if (user.id === changedBy.id) continue;
+    try {
+      const users = await this.getUsersInDepartment(incident.department_id);
       
-      await this.createNotification(
-        user.id,
-        `📊 Status Update: ${incident.title}`,
-        `Status changed from ${oldStatus} to ${newStatus} by ${changedBy.full_name}`,
-        NotificationType.STATUS_CHANGE,
-        incident.id,
-      );
-      
-      if (user.email) {
-        // Send email for important status changes
-        if (newStatus === 'resolved' || newStatus === 'closed') {
-          await this.emailService.sendApprovalNotification(
+      for (const user of users) {
+        if (user.id === changedBy.id) continue;
+        
+        await this.createNotification(
+          user.id,
+          `📊 Status Update: ${incident.title}`,
+          `Status changed from ${oldStatus} to ${newStatus} by ${changedBy.full_name}`,
+          NotificationType.STATUS_CHANGE,
+          incident.id,
+        );
+        
+        if (user.email && (newStatus === 'resolved' || newStatus === 'closed')) {
+          this.emailService.sendApprovalNotification(
             user.email,
             user.full_name,
             incident,
@@ -125,156 +145,166 @@ export class NotificationsService {
           );
         }
       }
+      
+      this.logger.log(`Sent status change notifications to ${users.length} users`);
+    } catch (error) {
+      this.logger.error(`Failed to send status change notifications: ${error.message}`);
     }
-    
-    this.logger.log(`Sent status change notifications to ${users.length} users`);
   }
 
   async notifyAssignment(incident: Incident, assignee: User, assignedBy: User): Promise<void> {
-    // Notify the assignee
-    await this.createNotification(
-      assignee.id,
-      `📋 Incident Assigned to You`,
-      `You have been assigned to: ${incident.title} by ${assignedBy.full_name}`,
-      NotificationType.ASSIGNMENT,
-      incident.id,
-      NotificationPriority.HIGH,
-    );
-    
-    if (assignee.email) {
-      await this.emailService.sendAssignmentNotification(
-        assignee.email,
-        assignee.full_name,
-        incident,
-        assignedBy.full_name,
-      );
-    }
-    
-    // Also notify department supervisor
-    const supervisors = await this.getUsersByRole('supervisor', incident.department_id);
-    for (const supervisor of supervisors) {
-      if (supervisor.id === assignee.id) continue;
-      
+    try {
       await this.createNotification(
-        supervisor.id,
-        `👥 Incident Assigned`,
-        `${incident.title} has been assigned to ${assignee.full_name} by ${assignedBy.full_name}`,
+        assignee.id,
+        `📋 Incident Assigned to You`,
+        `You have been assigned to: ${incident.title} by ${assignedBy.full_name}`,
         NotificationType.ASSIGNMENT,
         incident.id,
+        NotificationPriority.HIGH,
       );
+      
+      if (assignee.email) {
+        this.emailService.sendAssignmentNotification(
+          assignee.email,
+          assignee.full_name,
+          incident,
+          assignedBy.full_name,
+        );
+      }
+      
+      const supervisors = await this.getUsersByRole('supervisor', incident.department_id);
+      for (const supervisor of supervisors) {
+        if (supervisor.id === assignee.id) continue;
+        
+        await this.createNotification(
+          supervisor.id,
+          `👥 Incident Assigned`,
+          `${incident.title} has been assigned to ${assignee.full_name} by ${assignedBy.full_name}`,
+          NotificationType.ASSIGNMENT,
+          incident.id,
+        );
+      }
+      
+      this.logger.log(`Sent assignment notifications to assignee and supervisors`);
+    } catch (error) {
+      this.logger.error(`Failed to send assignment notifications: ${error.message}`);
     }
-    
-    this.logger.log(`Sent assignment notifications to assignee and supervisors`);
   }
 
   async notifyEscalation(incident: Incident, level: number): Promise<void> {
-    // Determine which role to notify based on escalation level
-    let targetRole = '';
-    if (level === 2) targetRole = 'supervisor';
-    else if (level === 3) targetRole = 'hod';
-    else if (level === 4) targetRole = 'dept_director';
-    else if (level === 5) targetRole = 'overall_manager';
-    else if (level >= 6) targetRole = 'overall_director';
-    
-    if (!targetRole) return;
-    
-    const users = await this.getUsersByRole(targetRole, incident.department_id);
-    
-    for (const user of users) {
-      await this.createNotification(
-        user.id,
-        `⚠️ Incident Escalated to Level ${level}`,
-        `${incident.title} has been escalated to Level ${level}. Immediate attention required.`,
-        NotificationType.ESCALATION,
-        incident.id,
-        NotificationPriority.URGENT,
-      );
+    try {
+      let targetRole = '';
+      if (level === 2) targetRole = 'supervisor';
+      else if (level === 3) targetRole = 'hod';
+      else if (level === 4) targetRole = 'dept_director';
+      else if (level === 5) targetRole = 'overall_manager';
+      else if (level >= 6) targetRole = 'overall_director';
       
-      if (user.email) {
-        await this.emailService.sendEscalationNotification(
-          user.email,
-          user.full_name,
-          incident,
-          level,
+      if (!targetRole) return;
+      
+      const users = await this.getUsersByRole(targetRole, incident.department_id);
+      
+      for (const user of users) {
+        await this.createNotification(
+          user.id,
+          `⚠️ Incident Escalated to Level ${level}`,
+          `${incident.title} has been escalated to Level ${level}. Immediate attention required.`,
+          NotificationType.ESCALATION,
+          incident.id,
+          NotificationPriority.URGENT,
         );
+        
+        if (user.email) {
+          this.emailService.sendEscalationNotification(
+            user.email,
+            user.full_name,
+            incident,
+            level,
+          );
+        }
       }
+      
+      this.logger.log(`Sent escalation notifications to ${users.length} users at level ${level}`);
+    } catch (error) {
+      this.logger.error(`Failed to send escalation notifications: ${error.message}`);
     }
-    
-    this.logger.log(`Sent escalation notifications to ${users.length} users at level ${level}`);
   }
 
   async notifyResolutionProof(incident: Incident, proofSubmitter: User): Promise<void> {
-    // Notify supervisors and HODs
-    const supervisors = await this.getUsersByRole('supervisor', incident.department_id);
-    const hods = await this.getUsersByRole('hod', incident.department_id);
-    const targets = [...supervisors, ...hods];
-    
-    for (const user of targets) {
-      await this.createNotification(
-        user.id,
-        `📎 Resolution Proof Submitted`,
-        `${proofSubmitter.full_name} has submitted resolution proof for: ${incident.title}`,
-        NotificationType.RESOLUTION_PROOF,
-        incident.id,
-        NotificationPriority.HIGH,
-      );
+    try {
+      const supervisors = await this.getUsersByRole('supervisor', incident.department_id);
+      const hods = await this.getUsersByRole('hod', incident.department_id);
+      const targets = [...supervisors, ...hods];
       
-      if (user.email) {
-        await this.emailService.sendApprovalNotification(
-          user.email,
-          user.full_name,
-          incident,
-          'Resolution Proof Submitted',
+      for (const user of targets) {
+        await this.createNotification(
+          user.id,
+          `📎 Resolution Proof Submitted`,
+          `${proofSubmitter.full_name} has submitted resolution proof for: ${incident.title}`,
+          NotificationType.RESOLUTION_PROOF,
+          incident.id,
+          NotificationPriority.HIGH,
         );
+        
+        if (user.email) {
+          this.emailService.sendApprovalNotification(
+            user.email,
+            user.full_name,
+            incident,
+            'Resolution Proof Submitted',
+          );
+        }
       }
+      
+      this.logger.log(`Sent resolution proof notifications to ${targets.length} users`);
+    } catch (error) {
+      this.logger.error(`Failed to send resolution proof notifications: ${error.message}`);
     }
-    
-    this.logger.log(`Sent resolution proof notifications to ${targets.length} users`);
   }
 
   async notifyApproval(incident: Incident, approver: User, status: string): Promise<void> {
-    // Notify supervisors, HODs, and the responder
-    const supervisors = await this.getUsersByRole('supervisor', incident.department_id);
-    const hods = await this.getUsersByRole('hod', incident.department_id);
-    
-    // Also notify the assigned responder if exists
-    let targets = [...supervisors, ...hods];
-    if (incident.assigned_to_id) {
-      const responder = await this.userRepository.findOne({ where: { id: incident.assigned_to_id } });
-      if (responder) targets.push(responder);
-    }
-    
-    // Notify the original reporter as well
-    if (incident.reported_by_id) {
-      const reporter = await this.userRepository.findOne({ where: { id: incident.reported_by_id } });
-      if (reporter) targets.push(reporter);
-    }
-    
-    // Remove duplicates
-    const uniqueTargets = [...new Map(targets.map(t => [t.id, t])).values()];
-    
-    for (const user of uniqueTargets) {
-      if (user.id === approver.id) continue;
+    try {
+      const supervisors = await this.getUsersByRole('supervisor', incident.department_id);
+      const hods = await this.getUsersByRole('hod', incident.department_id);
       
-      await this.createNotification(
-        user.id,
-        status === 'approved' ? '✅ Incident Approved' : '❌ Incident Rejected',
-        `${approver.full_name} has ${status} the resolution for: ${incident.title}`,
-        NotificationType.APPROVAL,
-        incident.id,
-        NotificationPriority.HIGH,
-      );
-      
-      if (user.email) {
-        await this.emailService.sendApprovalNotification(
-          user.email,
-          user.full_name,
-          incident,
-          status === 'approved' ? 'Approved' : 'Rejected',
-        );
+      let targets = [...supervisors, ...hods];
+      if (incident.assigned_to_id) {
+        const responder = await this.userRepository.findOne({ where: { id: incident.assigned_to_id } });
+        if (responder) targets.push(responder);
       }
+      
+      if (incident.reported_by_id) {
+        const reporter = await this.userRepository.findOne({ where: { id: incident.reported_by_id } });
+        if (reporter) targets.push(reporter);
+      }
+      
+      const uniqueTargets = [...new Map(targets.map(t => [t.id, t])).values()];
+      
+      for (const user of uniqueTargets) {
+        if (user.id === approver.id) continue;
+        
+        await this.createNotification(
+          user.id,
+          status === 'approved' ? '✅ Incident Approved' : '❌ Incident Rejected',
+          `${approver.full_name} has ${status} the resolution for: ${incident.title}`,
+          NotificationType.APPROVAL,
+          incident.id,
+          NotificationPriority.HIGH,
+        );
+        
+        if (user.email) {
+          this.emailService.sendApprovalNotification(
+            user.email,
+            user.full_name,
+            incident,
+            status === 'approved' ? 'Approved' : 'Rejected',
+          );
+        }
+      }
+      
+      this.logger.log(`Sent approval notifications to ${uniqueTargets.length} users`);
+    } catch (error) {
+      this.logger.error(`Failed to send approval notifications: ${error.message}`);
     }
-    
-    this.logger.log(`Sent approval notifications to ${uniqueTargets.length} users`);
   }
 }
