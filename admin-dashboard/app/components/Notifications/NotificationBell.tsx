@@ -35,7 +35,7 @@ export default function NotificationBell({ token, userId }: NotificationBellProp
     
     // Setup WebSocket connection for real-time notifications
     if (token && userId) {
-      const socket = io('http://localhost:3001', {
+      const socket = io(process.env.NEXT_PUBLIC_API_URL, {
         transports: ['websocket'],
         auth: { token }
       });
