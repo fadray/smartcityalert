@@ -71,11 +71,7 @@ const API_URL = 'http://localhost:3001';
       console.error('Export failed:', error);
     }
   };
-    type ReportType = {
-      id: string;
-      name: string;
-      icon: string;
-    };
+    
   // const reportTypes = [
   //   { id: 'daily', name: 'Daily Report', icon: '📅' },
   //   { id: 'weekly', name: 'Weekly Report', icon: '📊' },
@@ -86,6 +82,12 @@ const API_URL = 'http://localhost:3001';
   //   { id: 'success-rate', name: 'Success/Failure Rate', icon: '📈' },
   //   { id: 'combined', name: 'Executive Summary', icon: '📋' },
   // ];
+
+  type ReportType = {
+    id: string;
+    name: string;
+    icon: string;
+  };
 
   const reportTypes: ReportType[] = [
     { id: 'daily', name: 'Daily Report', icon: '📅' },
@@ -102,7 +104,8 @@ const API_URL = 'http://localhost:3001';
     <div>
       {/* Report Type Selector */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
-        {reportTypes.map(type => (
+        {/* {reportTypes.map(type => ( */}
+        {reportTypes.map((type: ReportType) => (
           <button
             key={type.id}
             onClick={() => setActiveReport(type.id)}
