@@ -71,8 +71,23 @@ const API_URL = 'http://localhost:3001';
       console.error('Export failed:', error);
     }
   };
+  type ReportType = {
+    id: string;
+    name: string;
+    icon: string;
+  };
+  // const reportTypes = [
+  //   { id: 'daily', name: 'Daily Report', icon: '📅' },
+  //   { id: 'weekly', name: 'Weekly Report', icon: '📊' },
+  //   { id: 'monthly', name: 'Monthly Report', icon: '📆' },
+  //   { id: 'by-type', name: 'By Incident Type', icon: '🏷️' },
+  //   { id: 'by-responder', name: 'Per Responder', icon: '👤' },
+  //   { id: 'by-department', name: 'Per Department', icon: '🏢' },
+  //   { id: 'success-rate', name: 'Success/Failure Rate', icon: '📈' },
+  //   { id: 'combined', name: 'Executive Summary', icon: '📋' },
+  // ];
 
-  const reportTypes = [
+  const reportTypes: ReportType[] = [
     { id: 'daily', name: 'Daily Report', icon: '📅' },
     { id: 'weekly', name: 'Weekly Report', icon: '📊' },
     { id: 'monthly', name: 'Monthly Report', icon: '📆' },
