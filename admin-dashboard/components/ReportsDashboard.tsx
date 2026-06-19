@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, Title, Text, Grid, Select, SelectItem, Button, Badge, Table, TableHead, TableRow, TableHeaderCell, TableBody, TableCell } from '@tremor/react';
+import { Card, Title, Text, Grid, Select, SelectItem, Button, Badge, Table, Metric, TableHead, TableRow, TableHeaderCell, TableBody, TableCell } from '@tremor/react';
 import { Download, Calendar, TrendingUp, CheckCircle, Clock, AlertTriangle, FileText, BarChart3 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast';
@@ -9,10 +9,10 @@ import toast from 'react-hot-toast';
 export function ReportsDashboard() {
   const [dateRange, setDateRange] = useState('30');
   const [departmentId, setDepartmentId] = useState('');
-  const [departments, setDepartments] = useState([]);
-  const [performanceData, setPerformanceData] = useState(null);
-  const [trendData, setTrendData] = useState([]);
-  const [topResponders, setTopResponders] = useState([]);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [performanceData, setPerformanceData] = useState<any[]>(null);
+  const [trendData, setTrendData] = useState<any[]>([]);
+  const [topResponders, setTopResponders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
