@@ -10,7 +10,7 @@ export function ReportsDashboard() {
   const [dateRange, setDateRange] = useState('30');
   const [departmentId, setDepartmentId] = useState('');
   const [departments, setDepartments] = useState<any[]>([]);
-  const [performanceData, setPerformanceData] = useState<any[]>(null);
+  const [performanceData, setPerformanceData] = useState<any>(null);
   const [trendData, setTrendData] = useState<any[]>([]);
   const [topResponders, setTopResponders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
