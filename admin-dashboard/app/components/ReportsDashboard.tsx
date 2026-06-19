@@ -64,7 +64,8 @@ const API_URL = 'http://localhost:3001';
     setLoading(false);
   };
 
-  const exportCSV = async (type) => {
+  //const exportCSV = async (type) => {
+  const exportCSV = async (type: string) => {
     try {
       window.open(`${API_URL}/api/reports/export?type=${type}&startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`, '_blank');
     } catch (error) {
