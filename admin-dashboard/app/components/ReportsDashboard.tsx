@@ -188,8 +188,14 @@ function renderDailyReport(data: any) {
         <div style={{ background: '#e0e7ff', padding: '16px', borderRadius: '8px', textAlign: 'center' }}><p style={{ fontSize: '12px', color: '#3730a3' }}>Success Rate</p><p style={{ fontSize: '28px', fontWeight: 'bold' }}>{data.success_rate.toFixed(1)}%</p></div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        <div><h3 style={{ fontWeight: 'bold', marginBottom: '8px' }}>By Type</h3>{Object.entries(data.by_type).map(([k, v]) => <div key={k}>{k}: {v}</div>)}</div>
-        <div><h3 style={{ fontWeight: 'bold', marginBottom: '8px' }}>By Department</h3>{Object.entries(data.by_department).map(([k, v]) => <div key={k}>{k}: {v}</div>)}</div>
+        <div><h3 style={{ fontWeight: 'bold', marginBottom: '8px' }}>By Type</h3>
+        {/* {Object.entries(data.by_type).map(([k, v]) => <div key={k}>{k}: {v}</div>)} */}
+        {Object.entries(data.by_type).map(([k, v]) => (<div key={k}>{k}: {String(v)}</div>))}
+        </div>
+        <div><h3 style={{ fontWeight: 'bold', marginBottom: '8px' }}>By Department</h3>
+        {/* {Object.entries(data.by_department).map(([k, v]) => <div key={k}>{k}: {v}</div>)} */}
+        {Object.entries(data.by_department).map(([k, v]) => (<div key={k}>{k}: {String(v)}</div>))}
+        </div>
       </div>
     </div>
   );
@@ -256,7 +262,7 @@ function renderResponderReport(data: any) {
             </tr>
           </thead>
           <tbody>
-            {data.responders.map(r => (
+            {data.responders.map((r: any) => (
               <tr key={r.responder_id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                 <td style={{ padding: '12px' }}>{r.name}</td>
                 <td style={{ padding: '12px' }}>{r.department}</td>
@@ -277,7 +283,7 @@ function renderDepartmentReport(data: any) {
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>Department Performance</h2>
       <div style={{ display: 'grid', gap: '16px' }}>
-        {data.departments.map(dept => (
+        {data.departments.map((dept: any) => (
           <div key={dept.department_id} style={{ border: `2px solid ${dept.color}`, padding: '16px', borderRadius: '8px' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 'bold' }}>{dept.department_name}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginTop: '12px' }}>
@@ -314,7 +320,7 @@ function renderSuccessRateReport(data: any) {
       {data.recommendations && data.recommendations.length > 0 && (
         <div style={{ padding: '16px', background: '#fef3c7', borderRadius: '8px' }}>
           <h3 style={{ fontWeight: 'bold', marginBottom: '8px' }}>Recommendations</h3>
-          {data.recommendations.map((rec, i) => <p key={i}>• {rec}</p>)}
+          {data.recommendations.map((rec: string, i: number) => <p key={i}>• {rec}</p>)}
         </div>
       )}
     </div>
