@@ -121,9 +121,14 @@ export class UsersService {
     return this.findOne(id);
   }
 
-  // ✅ WORKING WhatsApp methods
+  /**
+   * ✅ OPTION 1: Create user from WhatsApp with phone-based email generation
+   * 
+   * Generates unique email from phone number:
+   * Phone: +2347037158351 → whatsapp_2347037158351@smartcityalert.com
+   */
   async createFromWhatsApp(data: { phone: string; name: string; role?: string }): Promise<User> {
-    // Check if user already exists
+    // Check if user already exists by phone
     const existingUser = await this.userRepository.findOne({ 
       where: { phone: data.phone } 
     });
@@ -132,24 +137,45 @@ export class UsersService {
       return existingUser;
     }
     
-    // Generate a random password for WhatsApp users
+    // Generate unique email from phone number (remove non-numeric characters)
+    const cleanPhone = data.phone.replace(/[^0-9]/g, '');
+    const generatedEmail = `whatsapp_${cleanPhone}@smartcityalert.com`;
+    
+    // Generate a random password
     const tempPassword = Math.random().toString(36).slice(-8);
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
     
-    // Use insert instead of create/save to avoid type issues
+    // Insert the new user
     const result = await this.userRepository.insert({
       phone: data.phone,
       full_name: data.name,
-      email: '',
+      email: generatedEmail,
       role: data.role || 'resident',
       is_active: true,
       password: hashedPassword,
     });
     
     const id = result.identifiers[0].id;
-    return this.findOne(id);
+    const newUser = await this.findOne(id);
+    
+    // Optional: Send welcome email
+    try {
+      await this.emailService.sendWelcomeEmail(
+        generatedEmail,
+        data.name,
+        tempPassword
+      );
+    } catch (error) {
+      console.error('Failed to send welcome email:', error);
+      // Don't fail the user creation if email fails
+    }
+    
+    return newUser;
   }
 
+  /**
+   * Find user by phone number
+   */
   async findByPhone(phone: string): Promise<User | null> {
     const user = await this.userRepository.findOne({ 
       where: { phone },
@@ -160,6 +186,9 @@ export class UsersService {
     return user || null;
   }
 
+  /**
+   * Find or create user from WhatsApp
+   */
   async findOrCreateFromWhatsApp(phone: string, name?: string): Promise<User> {
     let user = await this.findByPhone(phone);
     
@@ -170,7 +199,7 @@ export class UsersService {
         role: 'resident',
       });
     }
-    
+    //return
     return user;
   }
 }
