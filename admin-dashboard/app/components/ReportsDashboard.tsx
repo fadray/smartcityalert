@@ -177,7 +177,7 @@ const API_URL = 'http://localhost:3001';
 }
 
 // Report Renderers
-function renderDailyReport(data) {
+function renderDailyReport(data: any) {
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>Daily Report - {new Date(data.date).toLocaleDateString()}</h2>
@@ -195,7 +195,7 @@ function renderDailyReport(data) {
   );
 }
 
-function renderWeeklyReport(data) {
+function renderWeeklyReport(data: any) {
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>Weekly Report</h2>
@@ -208,7 +208,7 @@ function renderWeeklyReport(data) {
   );
 }
 
-function renderMonthlyReport(data) {
+function renderMonthlyReport(data: any) {
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>Monthly Report - {data.month_name} {data.year}</h2>
@@ -222,7 +222,7 @@ function renderMonthlyReport(data) {
   );
 }
 
-function renderIncidentTypeReport(data) {
+function renderIncidentTypeReport(data: any) {
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>Incident Type Report</h2>
@@ -240,7 +240,7 @@ function renderIncidentTypeReport(data) {
   );
 }
 
-function renderResponderReport(data) {
+function renderResponderReport(data: any) {
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>Responder Performance</h2>
@@ -272,7 +272,7 @@ function renderResponderReport(data) {
   );
 }
 
-function renderDepartmentReport(data) {
+function renderDepartmentReport(data: any) {
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>Department Performance</h2>
@@ -293,7 +293,7 @@ function renderDepartmentReport(data) {
   );
 }
 
-function renderSuccessRateReport(data) {
+function renderSuccessRateReport(data: any) {
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>Success & Failure Rate Analysis</h2>
@@ -321,7 +321,7 @@ function renderSuccessRateReport(data) {
   );
 }
 
-function renderCombinedReport(data) {
+function renderCombinedReport(data: any) {
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>Executive Summary</h2>
