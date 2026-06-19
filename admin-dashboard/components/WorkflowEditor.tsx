@@ -259,10 +259,20 @@ export function WorkflowEditor() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Timeout (hours)</label>
-                <TextInput
+                {/* <TextInput
                   type="number"
                   value={nodeConfig.timeoutHours}
                   onChange={(e) => setNodeConfig({ ...nodeConfig, timeoutHours: parseInt(e.target.value) })}
+                /> */}
+                <TextInput
+                  type="number"
+                  value={String(nodeConfig.timeoutHours)}
+                  onChange={(e) =>
+                    setNodeConfig({
+                      ...nodeConfig,
+                      timeoutHours: parseInt(e.target.value) || 0,
+                    })
+                  }
                 />
                 <p className="text-xs text-gray-500 mt-1">Hours before auto-escalation to next step</p>
               </div>
