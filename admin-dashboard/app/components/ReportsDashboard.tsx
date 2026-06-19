@@ -71,11 +71,11 @@ const API_URL = 'http://localhost:3001';
       console.error('Export failed:', error);
     }
   };
-  type ReportType = {
-    id: string;
-    name: string;
-    icon: string;
-  };
+    type ReportType = {
+      id: string;
+      name: string;
+      icon: string;
+    };
   // const reportTypes = [
   //   { id: 'daily', name: 'Daily Report', icon: '📅' },
   //   { id: 'weekly', name: 'Weekly Report', icon: '📊' },
