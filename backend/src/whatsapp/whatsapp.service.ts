@@ -44,10 +44,20 @@ export class WhatsAppService {
         return { mock: true, message: 'Message sent in mock mode' };
       }
 
+      // Ensure the 'to' number has the whatsapp: prefix
+      const toNumber = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
+      
+      // Get the from number from env or use default
+      const fromNumber = this.configService.get('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886');
+      // Ensure the 'from' number has the whatsapp: prefix
+      const fromNumberFormatted = fromNumber.startsWith('whatsapp:') ? fromNumber : `whatsapp:${fromNumber}`;
+
+      this.logger.log(`Sending WhatsApp message from ${fromNumberFormatted} to ${toNumber}`);
+
       const response = await this.twilioClient.messages.create({
         body: message,
-        from: this.configService.get('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+14155238886'),
-        to: `whatsapp:${to}`,
+        from: fromNumberFormatted,
+        to: toNumber,
       });
       
       this.logger.log(`WhatsApp message sent to ${to}, SID: ${response.sid}`);
