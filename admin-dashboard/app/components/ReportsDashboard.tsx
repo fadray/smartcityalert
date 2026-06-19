@@ -5,9 +5,15 @@ import axios from 'axios';
 
 const API_URL = 'http://localhost:3001';
 
-export default function ReportsDashboard({ token }) {
+// export default function ReportsDashboard({ token }) {
+  type Props = {
+    token: string;
+  };
+
+  export default function ReportsDashboard({ token }: Props) {
   const [activeReport, setActiveReport] = useState('daily');
-  const [reportData, setReportData] = useState(null);
+  // const [reportData, setReportData] = useState(null);
+  const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().setDate(1)).toISOString().split('T')[0],
