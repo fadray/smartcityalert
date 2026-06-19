@@ -199,7 +199,7 @@ export class UsersService {
         role: 'resident',
       });
     }
-    //return
+    
     return user;
   }
 }
