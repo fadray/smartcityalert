@@ -77,7 +77,7 @@ export default function ReportIncident() {
       
       // Add all text fields
       Object.entries(formData).forEach(([key, value]) => {
-        formDataToSend.append(key, value);
+        formDataToSend.append(key, String(value));
       });
       
       // Add image files
