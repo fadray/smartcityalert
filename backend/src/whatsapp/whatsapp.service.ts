@@ -7,15 +7,20 @@ import { IncidentsService } from '../incidents/incidents.service';
 import { UsersService } from '../users/users.service';
 import { DepartmentsService } from '../departments/departments.service';
 import { Department } from '../departments/department.entity';
+import { PendingImage } from './pending-image.entity';
 
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
   private twilioClient: any;
 
-  constructor(
+ constructor(
     @InjectRepository(WhatsAppMessage)
     private whatsappRepo: Repository<WhatsAppMessage>,
+
+    @InjectRepository(PendingImage)
+    private pendingImageRepo: Repository<PendingImage>,
+
     private incidentsService: IncidentsService,
     private usersService: UsersService,
     private departmentsService: DepartmentsService,
@@ -71,6 +76,9 @@ export class WhatsAppService {
   /**
    * Send auto-reply to user confirming incident receipt
    */
+
+
+
   private async sendAutoReply(to: string, incident: any, incidentType: string): Promise<void> {
     try {
       // Get values from environment variables with fallbacks
@@ -237,10 +245,233 @@ export class WhatsAppService {
       await this.sendAutoReply(messageData.from, incident, incidentType);
       
       return incident;
+
     } catch (error) {
-      this.logger.error(`Error processing WhatsApp message: ${error.message}`);
-      this.logger.error(`Stack: ${error.stack}`);
+
+      this.logger.error(
+        `Error processing WhatsApp message: ${error.message}`
+      );
+
+      this.logger.error(
+        `Stack: ${error.stack}`
+      );
+
       throw error;
     }
   }
+
+
+
+  // Store pending image (photo without text)
+  async storePendingImage(data: {
+    from: string;
+    mediaUrl: string;
+    mediaType?: string;
+    profileName?: string;
+  }): Promise<any> {
+
+
+    const imagePath =
+      await this.downloadImage(
+        data.mediaUrl
+      );
+
+
+    const pendingImage =
+      this.pendingImageRepo.create({
+
+        from_number: data.from,
+
+        media_url:
+          data.mediaUrl,
+
+        media_type:
+          data.mediaType,
+
+        profile_name:
+          data.profileName,
+
+        image_path:
+          imagePath,
+
+        processed: false,
+
+        expired: false,
+
+      });
+
+
+
+    return await this.pendingImageRepo.save(
+      pendingImage
+    );
+  }
+
+
+
+
+
+  // Process pending image with text
+  async processPendingImage(
+    imageId: string,
+    text: string,
+  ): Promise<any> {
+
+
+    const pendingImage =
+      await this.pendingImageRepo.findOne({
+
+        where: {
+
+          id: imageId,
+
+          processed: false,
+
+          expired: false,
+
+        },
+
+      });
+
+
+
+    if (!pendingImage) {
+
+      throw new Error(
+        'Image not found or already processed'
+      );
+
+    }
+
+
+
+
+    const incident =
+      await this.processAndCreateIncident({
+
+        from:
+          pendingImage.from_number,
+
+        body:
+          text,
+
+        mediaUrl:
+          pendingImage.media_url,
+
+        mediaType:
+          pendingImage.media_type,
+
+        profileName:
+          pendingImage.profile_name,
+
+      });
+
+
+
+
+    pendingImage.processed = true;
+
+
+
+    await this.pendingImageRepo.save(
+      pendingImage
+    );
+
+
+
+    return incident;
+
+  }
+
+  async sendMessage(
+    to: string,
+    message: string,
+  ): Promise<any> {
+
+    return await this.sendWhatsAppMessage(
+      to,
+      message,
+    );
+
+  }
+
+  async handleStatusCheck(
+    phoneNumber: string,
+    incidentId: string,
+  ): Promise<any> {
+
+    const incident =
+      await this.incidentsService.findOne(
+        incidentId,
+      );
+
+
+    if (!incident) {
+
+      await this.sendWhatsAppMessage(
+        phoneNumber,
+        `❌ Incident ${incidentId} not found`,
+      );
+
+      return null;
+    }
+
+
+    const message =
+  `📋 *Incident Status*
+
+  🆔 ID: ${incident.id}
+
+  📌 Status: ${incident.status}
+
+  ⚠️ Severity: ${incident.severity_level}
+
+  Thank you for using SmartCityAlert.`;
+
+
+    await this.sendWhatsAppMessage(
+      phoneNumber,
+      message,
+    );
+
+
+    return incident;
+
+  }
+
+  private async downloadImage(
+    url: string,
+  ): Promise<string> {
+
+    try {
+
+      const fileName =
+        `uploads/${Date.now()}.jpg`;
+
+
+      // temporary placeholder
+      // replace later with real axios download
+
+      this.logger.log(
+        `Downloading image: ${url}`
+      );
+
+
+      return fileName;
+
+
+    } catch (error) {
+
+      this.logger.error(
+        `Image download failed: ${error.message}`
+      );
+
+
+      throw error;
+
+    }
+
+  }
+
+
 }

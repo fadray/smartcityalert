@@ -37,6 +37,12 @@ export class Incident {
   longitude: number;
 
   @Column({ type: 'text', nullable: true })
+  location: string;
+
+  @Column({ type: 'text', nullable: true })
+  address: string;
+
+  @Column({ type: 'text', nullable: true })
   images: string;
 
   @ManyToOne(() => User)
@@ -59,19 +65,19 @@ export class Incident {
   @Column({ default: 1 })
   current_workflow_level: number;
 
-  @Column({ type: 'text', nullable: true })
-  escalation_history: string;
+  @Column({ type: 'jsonb', nullable: true, default: [] })
+  escalation_history: any[];
 
-  @Column({ type: 'text', nullable: true })
-  resolution_proofs: string;
+  @Column({ type: 'jsonb', nullable: true, default: [] })
+  resolution_proofs: any[];
 
-  @Column({ type: 'text', nullable: true })
-  approvals: string;
+  @Column({ type: 'jsonb', nullable: true, default: [] })
+  approvals: any[];
 
   @Column({ nullable: true })
   resolved_at: Date;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   resolution_notes: string;
 
   @Column({ default: false })

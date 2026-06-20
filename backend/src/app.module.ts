@@ -5,6 +5,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { DepartmentsModule } from './departments/departments.module';
+import { PublicModule } from './public/public.module';
+import { GeocodingModule } from './geocoding/geocoding.module';
 import { IncidentsModule } from './incidents/incidents.module';
 import { RespondersModule } from './responders/responders.module';
 import { EscalationModule } from './escalation/escalation.module';
@@ -59,7 +61,9 @@ import { WhatsAppMessage } from './whatsapp/whatsapp-message.entity'; // Add thi
     MaintenanceModule,
     NotificationsModule,
     ReportsModule,
-    WhatsAppModule, // Add this
+    WhatsAppModule,
+    PublicModule,
+    GeocodingModule,
   ],
 })
 export class AppModule {}

@@ -5,34 +5,21 @@ import { Incident } from './incident.entity';
 import { User } from '../users/user.entity';
 import { Responder } from '../responders/responder.entity';
 import { NotificationsService } from '../notifications/notifications.service';
-
-interface HistoryEntry {
-  id: string;
-  level: number;
-  timestamp: string;
-  action: string;
-  reason: string;
-  user_name: string;
-  user_role: string;
-  old_value?: string | number;
-  new_value?: string | number;
-  comments?: string;
-  assignee_name?: string;
-  proof_image?: string;
-}
+import { GeocodingService } from '../geocoding/geocoding.service';
 
 @Injectable()
 export class IncidentsService {
-  private readonly logger = new Logger(IncidentsService.name); // ✅ Add logger
+  private readonly logger = new Logger(IncidentsService.name);
 
   constructor(
     @InjectRepository(Incident)
-    private incidentRepository: Repository<Incident>, // ✅ Keep as incidentRepository
+    private incidentRepository: Repository<Incident>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
     @InjectRepository(Responder)
     private responderRepository: Repository<Responder>,
     private notificationsService: NotificationsService,
+    private geocodingService: GeocodingService,
   ) {}
 
   async findAll(): Promise<Incident[]> {
@@ -76,26 +63,64 @@ export class IncidentsService {
   }
 
   async create(createIncidentDto: any, userId: string, images?: string[]): Promise<Incident> {
+    this.logger.log(`Creating incident: ${createIncidentDto.title}`);
+    this.logger.log(`Location received: ${createIncidentDto.location || 'Not provided'}`);
+
+    let latitude = createIncidentDto.latitude || null;
+    let longitude = createIncidentDto.longitude || null;
+    let address = createIncidentDto.address || null;
+    const locationText = createIncidentDto.location || null;
+
+    if (locationText && !latitude && !longitude) {
+      this.logger.log(`Geocoding location: "${locationText}"`);
+      try {
+        const geocodeResult = await this.geocodingService.geocodeLocation(locationText);
+        if (geocodeResult.latitude && geocodeResult.longitude) {
+          latitude = geocodeResult.latitude;
+          longitude = geocodeResult.longitude;
+          address = geocodeResult.formattedAddress || address;
+          this.logger.log(`Geocoded to: ${latitude}, ${longitude}`);
+        } else {
+          this.logger.warn(`Could not geocode location: "${locationText}"`);
+          address = locationText;
+        }
+      } catch (error) {
+        this.logger.error(`Geocoding error: ${error.message}`);
+        address = locationText;
+      }
+    }
+
+    if (latitude && longitude && !address) {
+      this.logger.log(`Reverse geocoding coordinates: ${latitude}, ${longitude}`);
+      try {
+        const reverseResult = await this.geocodingService.reverseGeocode(latitude, longitude);
+        address = reverseResult.formattedAddress || address;
+      } catch (error) {
+        this.logger.error(`Reverse geocoding error: ${error.message}`);
+      }
+    }
+
     const result = await this.incidentRepository.insert({
       title: createIncidentDto.title,
       description: createIncidentDto.description,
       incident_type: createIncidentDto.incident_type,
-      department_id: createIncidentDto.department_id,
+      department_id: createIncidentDto.department_id || null,
       severity_level: createIncidentDto.severity_level || 1,
-      latitude: createIncidentDto.latitude || 0,
-      longitude: createIncidentDto.longitude || 0,
+      latitude: latitude || 0,
+      longitude: longitude || 0,
+      location: locationText,
+      address: address || null,
       reported_by_id: userId,
       images: JSON.stringify(images || []),
       status: 'pending',
       current_workflow_level: 1,
-      escalation_history: JSON.stringify([]),
-      resolution_proofs: JSON.stringify([]),
-      approvals: JSON.stringify([]),
+      escalation_history: [],
+      resolution_proofs: [],
+      approvals: [],
     });
     const id = result.identifiers[0].id;
     const incident = await this.findOne(id);
     
-    // Send notifications for new incident
     await this.notificationsService.notifyNewIncident(incident);
     
     return incident;
@@ -112,15 +137,13 @@ export class IncidentsService {
     let history: any[] = [];
     if (incident.escalation_history) {
       try {
-        if (typeof incident.escalation_history === 'string') {
-          history = JSON.parse(incident.escalation_history);
-        } else if (Array.isArray(incident.escalation_history)) {
-          history = incident.escalation_history;
-        }
+        history = typeof incident.escalation_history === 'string' 
+          ? JSON.parse(incident.escalation_history) 
+          : incident.escalation_history;
       } catch (e) {}
     }
     
-    const newEntry = {
+    history.push({
       id: Date.now().toString(),
       level: incident.current_workflow_level,
       timestamp: new Date().toISOString(),
@@ -130,13 +153,12 @@ export class IncidentsService {
       user_role: userRole || 'System',
       old_value: incident.status,
       new_value: status,
-    };
-    history.push(newEntry);
+    });
     
     await this.incidentRepository.update(id, { 
       status, 
       updated_at: new Date(),
-      escalation_history: JSON.stringify(history),
+      escalation_history: history,
     });
     
     const updatedIncident = await this.findOne(id);
@@ -160,11 +182,9 @@ export class IncidentsService {
     let history: any[] = [];
     if (incident.escalation_history) {
       try {
-        if (typeof incident.escalation_history === 'string') {
-          history = JSON.parse(incident.escalation_history);
-        } else if (Array.isArray(incident.escalation_history)) {
-          history = incident.escalation_history;
-        }
+        history = typeof incident.escalation_history === 'string' 
+          ? JSON.parse(incident.escalation_history) 
+          : incident.escalation_history;
       } catch (e) {}
     }
     
@@ -183,7 +203,7 @@ export class IncidentsService {
     await this.incidentRepository.update(id, { 
       current_workflow_level: level, 
       updated_at: new Date(),
-      escalation_history: JSON.stringify(history),
+      escalation_history: history,
     });
     
     const updatedIncident = await this.findOne(id);
@@ -223,11 +243,9 @@ export class IncidentsService {
     let history: any[] = [];
     if (incident.escalation_history) {
       try {
-        if (typeof incident.escalation_history === 'string') {
-          history = JSON.parse(incident.escalation_history);
-        } else if (Array.isArray(incident.escalation_history)) {
-          history = incident.escalation_history;
-        }
+        history = typeof incident.escalation_history === 'string' 
+          ? JSON.parse(incident.escalation_history) 
+          : incident.escalation_history;
       } catch (e) {}
     }
     
@@ -250,7 +268,7 @@ export class IncidentsService {
       assignee_type: assigneeType,
       status: 'assigned',
       updated_at: new Date(),
-      escalation_history: JSON.stringify(history),
+      escalation_history: history,
     });
     
     const updatedIncident = await this.findOne(incidentId);
@@ -277,11 +295,9 @@ export class IncidentsService {
     let proofs: any[] = [];
     if (incident.resolution_proofs) {
       try {
-        if (typeof incident.resolution_proofs === 'string') {
-          proofs = JSON.parse(incident.resolution_proofs);
-        } else if (Array.isArray(incident.resolution_proofs)) {
-          proofs = incident.resolution_proofs;
-        }
+        proofs = typeof incident.resolution_proofs === 'string' 
+          ? JSON.parse(incident.resolution_proofs) 
+          : incident.resolution_proofs;
       } catch (e) {}
     }
     
@@ -299,11 +315,9 @@ export class IncidentsService {
     let history: any[] = [];
     if (incident.escalation_history) {
       try {
-        if (typeof incident.escalation_history === 'string') {
-          history = JSON.parse(incident.escalation_history);
-        } else if (Array.isArray(incident.escalation_history)) {
-          history = incident.escalation_history;
-        }
+        history = typeof incident.escalation_history === 'string' 
+          ? JSON.parse(incident.escalation_history) 
+          : incident.escalation_history;
       } catch (e) {}
     }
     
@@ -319,8 +333,8 @@ export class IncidentsService {
     });
     
     await this.incidentRepository.update(id, {
-      resolution_proofs: JSON.stringify(proofs),
-      escalation_history: JSON.stringify(history),
+      resolution_proofs: proofs,
+      escalation_history: history,
       status: 'pending_approval',
       updated_at: new Date(),
     });
@@ -348,11 +362,9 @@ export class IncidentsService {
     let approvals: any[] = [];
     if (incident.approvals) {
       try {
-        if (typeof incident.approvals === 'string') {
-          approvals = JSON.parse(incident.approvals);
-        } else if (Array.isArray(incident.approvals)) {
-          approvals = incident.approvals;
-        }
+        approvals = typeof incident.approvals === 'string' 
+          ? JSON.parse(incident.approvals) 
+          : incident.approvals;
       } catch (e) {}
     }
     
@@ -370,11 +382,9 @@ export class IncidentsService {
     let history: any[] = [];
     if (incident.escalation_history) {
       try {
-        if (typeof incident.escalation_history === 'string') {
-          history = JSON.parse(incident.escalation_history);
-        } else if (Array.isArray(incident.escalation_history)) {
-          history = incident.escalation_history;
-        }
+        history = typeof incident.escalation_history === 'string' 
+          ? JSON.parse(incident.escalation_history) 
+          : incident.escalation_history;
       } catch (e) {}
     }
     
@@ -390,8 +400,8 @@ export class IncidentsService {
     });
     
     const updateData: any = {
-      approvals: JSON.stringify(approvals),
-      escalation_history: JSON.stringify(history),
+      approvals: approvals,
+      escalation_history: history,
       updated_at: new Date(),
     };
     
@@ -425,11 +435,9 @@ export class IncidentsService {
     let history: any[] = [];
     if (incident.escalation_history) {
       try {
-        if (typeof incident.escalation_history === 'string') {
-          history = JSON.parse(incident.escalation_history);
-        } else if (Array.isArray(incident.escalation_history)) {
-          history = incident.escalation_history;
-        }
+        history = typeof incident.escalation_history === 'string' 
+          ? JSON.parse(incident.escalation_history) 
+          : incident.escalation_history;
       } catch (e) {}
     }
     
@@ -445,8 +453,8 @@ export class IncidentsService {
     
     await this.incidentRepository.update(id, {
       status: 'reopened',
-      resolution_proofs: JSON.stringify([]),
-      escalation_history: JSON.stringify(history),
+      resolution_proofs: [],
+      escalation_history: history,
       updated_at: new Date(),
     });
     
@@ -502,8 +510,8 @@ export class IncidentsService {
     });
   }
 
- // ✅ CORRECTED createFromWhatsApp method - NO null values
-async createFromWhatsApp(data: {
+  // ✅ FINAL FIX: Use insert() with null for optional fields
+ async createFromWhatsApp(data: {
   phoneNumber: string;
   message: string;
   detectedType: string;
@@ -513,41 +521,129 @@ async createFromWhatsApp(data: {
   mediaUrl?: string;
   userId?: string;
 }) {
-  // Use insert with default values instead of null
-  const result = await this.incidentRepository.insert({
-    title: `${data.detectedType.toUpperCase()} Report via WhatsApp`,
-    description: data.message,
-    incident_type: data.detectedType,
-    department_id: data.departmentId || '',
-    severity_level: data.severity || 2,
-    status: 'pending',
-    latitude: 0,  // Changed from null to 0
-    longitude: 0, // Changed from null to 0
-    images: data.mediaUrl ? JSON.stringify([data.mediaUrl]) : JSON.stringify([]), // Changed from null to empty array
-    reported_by_id: data.userId || '',
-    current_workflow_level: 1,
-    escalation_history: JSON.stringify([{
-      timestamp: new Date().toISOString(),
-      source: 'whatsapp',
-      location_hint: data.locationHint || '',
-      phone_number: data.phoneNumber,
-    }]),
-    resolution_proofs: JSON.stringify([]),
-    approvals: JSON.stringify([]),
-  });
-  
-  const id = result.identifiers[0].id;
-  const saved = await this.findOne(id);
-  
-  this.logger.log(`WhatsApp incident created: ${saved.id} from ${data.phoneNumber}`);
-  
-  // Send notification for new WhatsApp incident
+  let latitude = 0;
+  let longitude = 0;
+  let address: string | undefined = undefined;
+
+  const locationText = data.locationHint ?? undefined;
+
+  if (locationText) {
+    try {
+      this.logger.log(`Geocoding WhatsApp location: "${locationText}"`);
+
+      const geocodeResult =
+        await this.geocodingService.geocodeLocation(locationText);
+
+      if (geocodeResult.latitude && geocodeResult.longitude) {
+        latitude = geocodeResult.latitude;
+        longitude = geocodeResult.longitude;
+
+        address = geocodeResult.formattedAddress ?? undefined;
+
+        this.logger.log(
+          `Geocoded to: ${latitude}, ${longitude}`
+        );
+      }
+
+    } catch (error) {
+      this.logger.warn(
+        `Could not geocode WhatsApp location: ${error.message}`
+      );
+    }
+  }
+
+
+  const newIncident = new Incident();
+
+  newIncident.title =
+    `${data.detectedType.toUpperCase()} Report via WhatsApp`;
+
+  newIncident.description = data.message;
+
+  newIncident.incident_type =
+    data.detectedType;
+
+
+  // Foreign keys
+  newIncident.department_id =
+    data.departmentId || '';
+
+
+  newIncident.severity_level =
+    data.severity ?? 2;
+
+
+  newIncident.status =
+    'pending';
+
+
+  // Location
+  newIncident.latitude =
+    latitude;
+
+  newIncident.longitude =
+    longitude;
+
+ newIncident.location =
+    locationText || '';
+
+  newIncident.address =
+    address || '';
+
+
+  // Media
+  newIncident.images =
+    data.mediaUrl
+      ? JSON.stringify([data.mediaUrl])
+      : JSON.stringify([]);
+
+
+  // Reporter
+  newIncident.reported_by_id =
+    data.userId || '';
+
+
+  newIncident.current_workflow_level =
+    1;
+
+
+  // History
+  newIncident.escalation_history =
+    [
+      {
+        timestamp: new Date().toISOString(),
+        source: 'whatsapp',
+        location_hint:
+          data.locationHint ?? undefined,
+        phone_number:
+          data.phoneNumber ?? undefined,
+      },
+    ] as any;
+
+
+  newIncident.resolution_proofs =
+    [];
+
+
+  newIncident.approvals =
+    [];
+
+
+  const saved =
+    await this.incidentRepository.save(newIncident);
+
+
+  this.logger.log(
+    `WhatsApp incident created: ${saved.id} from ${data.phoneNumber}`
+  );
+
+
   await this.notificationsService.notifyNewIncident(saved);
-  
+
+
   return saved;
 }
 
-  // ✅ Additional helper method for WhatsApp incidents
   async findByWhatsAppNumber(phoneNumber: string): Promise<Incident[]> {
     return this.incidentRepository
       .createQueryBuilder('incident')

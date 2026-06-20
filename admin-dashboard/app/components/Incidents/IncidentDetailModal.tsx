@@ -16,6 +16,9 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
+// ✅ Get image URL from environment
+const IMAGE_BASE_URL = process.env.NEXT_PUBLIC_IMAGE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
 interface Assignee {
   id: string;
   name: string;
@@ -63,6 +66,15 @@ export default function IncidentDetailModal({
   const [loadingAssignees, setLoadingAssignees] = useState(false);
   const [currentIncident, setCurrentIncident] = useState<Incident>(incident);
   const [updateTrail, setUpdateTrail] = useState<UpdateTrailItem[]>([]);
+
+  // ✅ Helper function to get image URL
+  const getImageUrl = (imagePath: string) => {
+    if (!imagePath) return '';
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath;
+    }
+    return `${IMAGE_BASE_URL}${imagePath}`;
+  };
 
   useEffect(() => {
     if (incident) {
@@ -204,7 +216,6 @@ export default function IncidentDetailModal({
       alert(`Incident status updated to ${newStatus}`);
       await refreshIncidentData();
       onRefresh();
-      // Close modal after successful update
       onClose();
     } catch (error) {
       console.error('Failed to update status:', error);
@@ -235,7 +246,6 @@ export default function IncidentDetailModal({
       await refreshIncidentData();
       onRefresh();
       fetchAvailableAssignees();
-      // Close modal after successful assignment
       onClose();
     } catch (error: any) {
       console.error('Failed to assign:', error);
@@ -279,29 +289,16 @@ export default function IncidentDetailModal({
     return 'bg-yellow-100 text-yellow-800';
   };
 
-  // const getAssignedToName = () => {
-  //   if (currentIncident.assigned_to?.user?.full_name) {
-  //     return currentIncident.assigned_to.user.full_name;
-  //   }
-  //   if (currentIncident.assigned_to_id) {
-  //     const assignee = availableAssignees.find(a => a.id === currentIncident.assigned_to_id);
-  //     if (assignee) return assignee.name;
-  //   }
-  //   return 'Unassigned';
-  // };
-
   const getAssignedToName = () => {
     if (currentIncident.assigned_to?.full_name) {
       return currentIncident.assigned_to.full_name;
     }
-
     if (currentIncident.assigned_to_id) {
       const assignee = availableAssignees.find(
         a => a.id === currentIncident.assigned_to_id
       );
       if (assignee) return assignee.name;
     }
-
     return 'Unassigned';
   };
 
@@ -452,20 +449,26 @@ export default function IncidentDetailModal({
               </div>
             </div>
 
-            {/* Images Section */}
+            {/* ✅ Images Section - Fixed with environment variable */}
             {images.length > 0 && (
               <div>
                 <h4 className="text-sm font-medium text-gray-700 mb-2">Attached Images</h4>
                 <div className="grid grid-cols-3 gap-2">
-                  {images.map((img, idx) => (
-                    <img
-                      key={idx}
-                      src={`http://localhost:3001${img}`}
-                      alt={`Incident ${idx}`}
-                      className="w-full h-32 object-cover rounded-lg border cursor-pointer hover:opacity-80"
-                      onClick={() => window.open(`http://localhost:3001${img}`, '_blank')}
-                    />
-                  ))}
+                  {images.map((img, idx) => {
+                    const imageUrl = getImageUrl(img);
+                    return (
+                      <img
+                        key={idx}
+                        src={imageUrl}
+                        alt={`Incident ${idx}`}
+                        className="w-full h-32 object-cover rounded-lg border cursor-pointer hover:opacity-80"
+                        onClick={() => window.open(imageUrl, '_blank')}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/images/placeholder.png';
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             )}
