@@ -5,19 +5,19 @@ export class PendingImage {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'from_number' })
   from_number: string;
 
-  @Column()
+  @Column({ name: 'media_url' })
   media_url: string;
 
-  @Column({ nullable: true })
+  @Column({ name: 'media_type', nullable: true })
   media_type: string;
 
-  @Column({ nullable: true })
+  @Column({ name: 'profile_name', nullable: true })
   profile_name: string;
 
-  @Column({ nullable: true })
+  @Column({ name: 'image_path', nullable: true })
   image_path: string;
 
   @Column({ default: false })
@@ -26,6 +26,6 @@ export class PendingImage {
   @Column({ default: false })
   expired: boolean;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at' })
   created_at: Date;
 }
