@@ -80,31 +80,27 @@ export class WhatsAppController {
           return { status: 'success', action: 'type_selected', type: detectedType };
         }
         
-        // ✅ Check if user is in the middle of a report
+        // ✅ Get the current session
         const session = await this.whatsappService.getIncidentSession(fromNumber);
         
-        if (session && session.step === 'awaiting_title') {
-          // Handle photo during title step
-          if (isMediaOnly && mediaUrl) {
-            const storedImage = await this.whatsappService.storePendingImage({
-              from: fromNumber,
-              mediaUrl: mediaUrl,
-              mediaType: mediaType,
-              profileName: profileName,
-            });
-            
-            session.imageId = storedImage.id;
-            session.mediaUrl = mediaUrl;
-            session.mediaType = mediaType;
-            await this.whatsappService.storeIncidentSession(fromNumber, session);
-            
+        // ✅ IMPORTANT: If there's a media URL and the user is in any step, store it in session
+        if (mediaUrl && session) {
+          this.logger.log(`📸 Storing media URL in session for ${fromNumber}: ${mediaUrl}`);
+          session.mediaUrl = mediaUrl;
+          session.mediaType = mediaType;
+          await this.whatsappService.storeIncidentSession(fromNumber, session);
+          
+          // If this is a media-only message, acknowledge it
+          if (isMediaOnly) {
             await this.whatsappService.sendMessage(
               fromNumber, 
-              `📸 *Image received!*\n\nPlease send the incident description.`
+              `📸 *Image received!*\n\nPlease continue with your report.`
             );
-            return { status: 'pending', message: 'Image received, waiting for text' };
+            return { status: 'pending', message: 'Image stored, waiting for text' };
           }
-          
+        }
+        
+        if (session && session.step === 'awaiting_title') {
           // ✅ Step 2: Incident Title received
           if (messageBody) {
             session.step = 'awaiting_location';
@@ -128,26 +124,6 @@ export class WhatsAppController {
         
         // ✅ Check if awaiting location
         if (session && session.step === 'awaiting_location') {
-          // Handle photo during location step
-          if (isMediaOnly && mediaUrl) {
-            const storedImage = await this.whatsappService.storePendingImage({
-              from: fromNumber,
-              mediaUrl: mediaUrl,
-              mediaType: mediaType,
-              profileName: profileName,
-            });
-            session.imageId = storedImage.id;
-            session.mediaUrl = mediaUrl;
-            session.mediaType = mediaType;
-            await this.whatsappService.storeIncidentSession(fromNumber, session);
-            
-            await this.whatsappService.sendMessage(
-              fromNumber, 
-              `📸 *Image received!*\n\nPlease send the location details.`
-            );
-            return { status: 'pending', message: 'Image received, waiting for location' };
-          }
-          
           // ✅ Step 3: Location and phone received - Create incident
           if (messageBody) {
             // Extract phone number
@@ -159,13 +135,12 @@ export class WhatsAppController {
               locationText = messageBody.replace(phoneMatch[0], '').trim();
             }
             
-            // ✅ Make sure we pass the mediaUrl from session or current request
+            // ✅ Get the media URL from the session (it was stored when the image was received)
             const finalMediaUrl = session.mediaUrl || mediaUrl || null;
             const finalMediaType = session.mediaType || mediaType || null;
             
-            this.logger.log(`📸 Processing with mediaUrl: ${finalMediaUrl ? 'YES' : 'NO'}`);
-            this.logger.log(`📸 Session mediaUrl: ${session.mediaUrl || 'NONE'}`);
-            this.logger.log(`📸 Request mediaUrl: ${mediaUrl || 'NONE'}`);
+            this.logger.log(`📸 Final media URL: ${finalMediaUrl || 'NONE'}`);
+            this.logger.log(`📸 Session media URL: ${session.mediaUrl || 'NONE'}`);
             
             const incident = await this.whatsappService.processCompleteReport({
               from: fromNumber,
@@ -199,20 +174,33 @@ export class WhatsAppController {
           }
         }
         
-        // ✅ Handle media-only messages (photo without text)
+        // ✅ Handle media-only messages (photo without text) - no session yet
         if (isMediaOnly && mediaUrl) {
-          const storedImage = await this.whatsappService.storePendingImage({
-            from: fromNumber,
-            mediaUrl: mediaUrl,
-            mediaType: mediaType,
-            profileName: profileName,
-          });
-          
-          return { 
-            status: 'pending', 
-            message: '📸 Image received. Please send a description or type HELP to start a report.',
-            imageId: storedImage.id,
-          };
+          // Check if there's a session, if not, create one
+          let existingSession = await this.whatsappService.getIncidentSession(fromNumber);
+          if (!existingSession) {
+            // Create a new session with just the image
+            await this.whatsappService.storeIncidentSession(fromNumber, {
+              step: 'awaiting_title',
+              mediaUrl: mediaUrl,
+              mediaType: mediaType,
+              timestamp: Date.now(),
+            });
+            await this.whatsappService.sendMessage(
+              fromNumber, 
+              `📸 *Image received!*\n\nPlease type HELP to select an incident type, or send a description.`
+            );
+          } else {
+            // Update existing session with image
+            existingSession.mediaUrl = mediaUrl;
+            existingSession.mediaType = mediaType;
+            await this.whatsappService.storeIncidentSession(fromNumber, existingSession);
+            await this.whatsappService.sendMessage(
+              fromNumber, 
+              `📸 *Image received and saved!*\n\nPlease continue with your report.`
+            );
+          }
+          return { status: 'pending', message: 'Image stored' };
         }
         
         // ✅ Handle STATUS command
@@ -231,8 +219,8 @@ export class WhatsAppController {
           const incident = await this.whatsappService.processAndCreateIncident({
             from: fromNumber,
             body: messageBody,
-            mediaUrl: mediaUrl,
-            mediaType: mediaType,
+            mediaUrl: mediaUrl || null,
+            mediaType: mediaType || null,
             profileName: profileName,
           });
           
