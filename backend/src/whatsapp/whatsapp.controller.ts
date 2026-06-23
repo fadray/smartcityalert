@@ -1,14 +1,16 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Logger } from '@nestjs/common';
 import { WhatsAppService } from './whatsapp.service';
 
 @Controller('whatsapp')
 export class WhatsAppController {
+  private readonly logger = new Logger(WhatsAppController.name);
+
   constructor(private whatsappService: WhatsAppService) {}
 
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
   async handleIncomingWebhook(@Body() payload: any) {
-    console.log('WhatsApp webhook received:', JSON.stringify(payload, null, 2));
+    this.logger.log('WhatsApp webhook received');
     
     try {
       if (payload.From) {
@@ -148,7 +150,7 @@ export class WhatsAppController {
           
           // ✅ Step 3: Location and phone received - Create incident
           if (messageBody) {
-            // Extract phone number from the message using regex
+            // Extract phone number
             const phoneMatch = messageBody.match(/(?:phone|tel|call|contact)?:?\s*([+0-9]{10,})/i);
             const phoneNumber = phoneMatch ? phoneMatch[1] : null;
             
@@ -157,14 +159,22 @@ export class WhatsAppController {
               locationText = messageBody.replace(phoneMatch[0], '').trim();
             }
             
+            // ✅ Make sure we pass the mediaUrl from session or current request
+            const finalMediaUrl = session.mediaUrl || mediaUrl || null;
+            const finalMediaType = session.mediaType || mediaType || null;
+            
+            this.logger.log(`📸 Processing with mediaUrl: ${finalMediaUrl ? 'YES' : 'NO'}`);
+            this.logger.log(`📸 Session mediaUrl: ${session.mediaUrl || 'NONE'}`);
+            this.logger.log(`📸 Request mediaUrl: ${mediaUrl || 'NONE'}`);
+            
             const incident = await this.whatsappService.processCompleteReport({
               from: fromNumber,
               incidentType: session.incidentType,
               title: session.title,
               location: locationText || messageBody,
               phoneNumber: phoneNumber || null,
-              mediaUrl: session.mediaUrl || mediaUrl || null,
-              mediaType: session.mediaType || mediaType || null,
+              mediaUrl: finalMediaUrl,
+              mediaType: finalMediaType,
               profileName: profileName,
             });
             
@@ -175,7 +185,7 @@ export class WhatsAppController {
               `🆔 *ID:* ${incident.id.slice(0, 8)}\n` +
               `📌 *Type:* ${session.incidentType.toUpperCase()}\n` +
               `📍 *Location:* ${locationText}\n` +
-              `📸 *Photo:* ${session.mediaUrl ? '✅ Received' : '❌ No photo'}\n\n` +
+              `📸 *Photo:* ${finalMediaUrl ? '✅ Received' : '❌ No photo'}\n\n` +
               `A responder will be assigned shortly.\n` +
               `Track status: https://smartcityalert.com/track/${incident.id}`;
             

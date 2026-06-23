@@ -52,12 +52,16 @@ export class WhatsAppService {
    */
   private async downloadImage(mediaUrl: string): Promise<string | null> {
     try {
-      if (!mediaUrl) return null;
+      if (!mediaUrl) {
+        this.logger.warn('No media URL provided');
+        return null;
+      }
 
       // Create uploads directory if it doesn't exist
       const uploadDir = './uploads';
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
+        this.logger.log(`Created uploads directory: ${uploadDir}`);
       }
 
       // Generate unique filename
@@ -67,12 +71,17 @@ export class WhatsAppService {
       const filename = `whatsapp-${timestamp}-${random}${ext}`;
       const filepath = path.join(uploadDir, filename);
 
-      this.logger.log(`Downloading image from: ${mediaUrl}`);
-      this.logger.log(`Saving to: ${filepath}`);
+      this.logger.log(`📸 Downloading image from: ${mediaUrl}`);
+      this.logger.log(`💾 Saving to: ${filepath}`);
 
       // Get Twilio credentials
       const accountSid = this.configService.get('TWILIO_ACCOUNT_SID');
       const authToken = this.configService.get('TWILIO_AUTH_TOKEN');
+
+      if (!accountSid || !authToken) {
+        this.logger.error('Twilio credentials not configured');
+        return null;
+      }
 
       // Download image using axios with Twilio authentication
       const response = await axios.default({
@@ -80,8 +89,8 @@ export class WhatsAppService {
         url: mediaUrl,
         responseType: 'stream',
         auth: {
-          username: accountSid || '',
-          password: authToken || '',
+          username: accountSid,
+          password: authToken,
         },
         timeout: 30000,
       });
@@ -195,8 +204,8 @@ export class WhatsAppService {
    */
   private async sendAutoReply(to: string, incident: any, incidentType: string, hasImage: boolean = false): Promise<void> {
     try {
-      const trackUrl = this.configService.get('WHATSAPP_TRACK_URL', 'https://your-domain.com/track');
-      const emergencyPhone = this.configService.get('WHATSAPP_EMERGENCY_PHONE', '+234-XXX-XXX-XXXX');
+      const trackUrl = this.configService.get('WHATSAPP_TRACK_URL', 'https://smartcity-user.vercel.app/track');
+      const emergencyPhone = this.configService.get('WHATSAPP_EMERGENCY_PHONE', '+234-800-SMART-CITY');
       const appName = this.configService.get('WHATSAPP_APP_NAME', 'SmartCityAlert');
 
       const typeEmojis: Record<string, string> = {
@@ -411,6 +420,7 @@ export class WhatsAppService {
     profileName?: string;
   }): Promise<any> {
     this.logger.log(`📋 Processing complete report from ${data.from}`);
+    this.logger.log(`📸 Media URL present: ${!!data.mediaUrl}`);
     
     // Find or create user
     let user = await this.usersService.findByPhone(data.from);
@@ -435,13 +445,24 @@ export class WhatsAppService {
       }
     }
     
-    // Download image if present
+    // ✅ Download image if present
     let imagePath: string | null = null;
     let hasImage = false;
+    let imageUrls: string[] = [];
     
     if (data.mediaUrl) {
+      this.logger.log(`📸 Downloading image from: ${data.mediaUrl}`);
       imagePath = await this.downloadImage(data.mediaUrl);
-      if (imagePath) hasImage = true;
+      if (imagePath) {
+        hasImage = true;
+        imageUrls = [imagePath];
+        this.logger.log(`✅ Image saved: ${imagePath}`);
+      } else {
+        this.logger.warn('❌ Failed to download image - continuing without image');
+        imageUrls = [];
+      }
+    } else {
+      this.logger.log('ℹ️ No image URL provided in request');
     }
     
     // Get department
@@ -461,8 +482,7 @@ export class WhatsAppService {
       department = await this.departmentsService.findByName(departmentName);
     }
     
-    // Create incident
-    const imageUrls = imagePath ? [imagePath] : [];
+    // ✅ Create incident with image
     const severityLevel = {
       fire: 5,
       medical: 5,
@@ -472,6 +492,8 @@ export class WhatsAppService {
       flooding: 4,
       general: 1,
     }[data.incidentType] || 2;
+    
+    this.logger.log(`📸 Creating incident with ${imageUrls.length} image(s)`);
     
     const incident = await this.incidentsService.create(
       {
@@ -485,7 +507,7 @@ export class WhatsAppService {
         location: data.location,
       },
       user.id,
-      imageUrls
+      imageUrls  // ✅ Pass the image URLs array
     );
     
     // Save WhatsApp message
@@ -501,7 +523,8 @@ export class WhatsAppService {
         title: data.title,
         location: data.location,
         phone: data.phoneNumber,
-        hasImage,
+        hasImage: hasImage,
+        imagePath: imagePath,
       },
       incident_id: incident.id,
       processed_by_id: user.id,
@@ -513,10 +536,10 @@ export class WhatsAppService {
     
     await this.whatsappRepo.save(whatsappMsg);
     
-    // Send auto-reply
+    // ✅ Send auto-reply with image confirmation
     await this.sendAutoReply(data.from, incident, data.incidentType, hasImage);
     
-    this.logger.log(`✅ Complete report processed: ${incident.id}`);
+    this.logger.log(`✅ Complete report processed: ${incident.id} with ${imageUrls.length} image(s)`);
     return incident;
   }
 
