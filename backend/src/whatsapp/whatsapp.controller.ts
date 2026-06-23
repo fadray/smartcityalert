@@ -19,28 +19,193 @@ export class WhatsAppController {
         const profileName = payload.ProfileName || null;
         const numMedia = parseInt(payload.NumMedia || '0');
         
-        // ✅ Check if this is a media-only message (no text)
         const isMediaOnly = numMedia > 0 && !messageBody.trim();
         
-        // ✅ Check for HELP command
+        // ✅ Check for COMMANDS
+        if (messageBody.toLowerCase() === 'commands' || messageBody.toLowerCase() === 'command') {
+          const commandsMessage = 
+            `📱 *SmartCityAlert Commands*\n\n` +
+            `• *HELP* - Show incident types\n` +
+            `• *COMMANDS* - Show this menu\n` +
+            `• *STATUS <ID>* - Check incident status\n\n` +
+            `📸 You can send photos with your report!`;
+          
+          await this.whatsappService.sendMessage(fromNumber, commandsMessage);
+          return { status: 'success', action: 'commands' };
+        }
+        
+        // ✅ Check for HELP - Show clickable incident types
         if (messageBody.toLowerCase() === 'help') {
           const helpMessage = 
-            `📱 *SmartCityAlert WhatsApp Commands*\n\n` +
-            `Simply describe the issue. Examples:\n` +
-            `• "Fire at Campground Zone B" (with or without photo)\n` +
-            `• "Medical emergency near Gate A" (with or without photo)\n` +
-            `• "Theft reported at East Gate" (with or without photo)\n\n` +
-            `📸 You can send photos with or without text!\n\n` +
-            `Other commands:\n` +
-            `• \`STATUS <incident_id>\` - Check incident status\n` +
-            `• \`HELP\` - Show this message\n\n` +
-            `📌 Tip: Send a photo with a caption for fastest response!`;
+            `📋 *SmartCityAlert - Select Incident Type*\n\n` +
+            `Tap on one of the options below:\n\n` +
+            `🔥 *FIRE* - Fire outbreaks, burning, smoke\n` +
+            `🚑 *MEDICAL* - Injuries, accidents, ambulance\n` +
+            `👮 *SECURITY* - Theft, robbery, suspicious\n` +
+            `🔧 *MAINTENANCE* - Roads, lights, drainage\n` +
+            `🚦 *TRAFFIC* - Congestion, accidents\n` +
+            `🌊 *FLOODING* - Water logging, blocked drains\n` +
+            `📋 *GENERAL* - Other incidents\n\n` +
+            `_Reply with the type (e.g., "FIRE") to start reporting_`;
           
           await this.whatsappService.sendMessage(fromNumber, helpMessage);
           return { status: 'success', action: 'help' };
         }
         
-        // ✅ Check for STATUS command
+        // ✅ Check for incident type selection
+        const incidentTypes = ['fire', 'medical', 'security', 'maintenance', 'traffic', 'flooding', 'general'];
+        const detectedType = incidentTypes.find(type => 
+          messageBody.toLowerCase() === type || 
+          messageBody.toLowerCase() === type + ' report'
+        );
+        
+        if (detectedType) {
+          const titlePrompt = 
+            `📍 *${detectedType.toUpperCase()} Report - Step 1/3*\n\n` +
+            `Please describe the incident briefly:\n` +
+            `• What happened?\n` +
+            `• How serious is it?\n\n` +
+            `📸 You can also send a photo with your description.\n\n` +
+            `Example: "Fire at Campground Zone B, smoke visible everywhere"`;
+          
+          await this.whatsappService.storeIncidentSession(fromNumber, {
+            step: 'awaiting_title',
+            incidentType: detectedType,
+            timestamp: Date.now(),
+          });
+          
+          await this.whatsappService.sendMessage(fromNumber, titlePrompt);
+          return { status: 'success', action: 'type_selected', type: detectedType };
+        }
+        
+        // ✅ Check if user is in the middle of a report
+        const session = await this.whatsappService.getIncidentSession(fromNumber);
+        
+        if (session && session.step === 'awaiting_title') {
+          // Handle photo during title step
+          if (isMediaOnly && mediaUrl) {
+            const storedImage = await this.whatsappService.storePendingImage({
+              from: fromNumber,
+              mediaUrl: mediaUrl,
+              mediaType: mediaType,
+              profileName: profileName,
+            });
+            
+            session.imageId = storedImage.id;
+            session.mediaUrl = mediaUrl;
+            session.mediaType = mediaType;
+            await this.whatsappService.storeIncidentSession(fromNumber, session);
+            
+            await this.whatsappService.sendMessage(
+              fromNumber, 
+              `📸 *Image received!*\n\nPlease send the incident description.`
+            );
+            return { status: 'pending', message: 'Image received, waiting for text' };
+          }
+          
+          // ✅ Step 2: Incident Title received
+          if (messageBody) {
+            session.step = 'awaiting_location';
+            session.title = messageBody;
+            await this.whatsappService.storeIncidentSession(fromNumber, session);
+            
+            const locationPrompt = 
+              `📍 *${session.incidentType.toUpperCase()} Report - Step 2/3*\n\n` +
+              `Please provide the location and your phone number:\n` +
+              `• House/Flat Number\n` +
+              `• Street Name\n` +
+              `• Estate/Area\n` +
+              `• Landmark (optional)\n` +
+              `• Phone Number (for updates)\n\n` +
+              `Example: "House 12, Covenant Avenue, Campground, near the main gate, Phone: +2348123456789"`;
+            
+            await this.whatsappService.sendMessage(fromNumber, locationPrompt);
+            return { status: 'success', step: 'awaiting_location' };
+          }
+        }
+        
+        // ✅ Check if awaiting location
+        if (session && session.step === 'awaiting_location') {
+          // Handle photo during location step
+          if (isMediaOnly && mediaUrl) {
+            const storedImage = await this.whatsappService.storePendingImage({
+              from: fromNumber,
+              mediaUrl: mediaUrl,
+              mediaType: mediaType,
+              profileName: profileName,
+            });
+            session.imageId = storedImage.id;
+            session.mediaUrl = mediaUrl;
+            session.mediaType = mediaType;
+            await this.whatsappService.storeIncidentSession(fromNumber, session);
+            
+            await this.whatsappService.sendMessage(
+              fromNumber, 
+              `📸 *Image received!*\n\nPlease send the location details.`
+            );
+            return { status: 'pending', message: 'Image received, waiting for location' };
+          }
+          
+          // ✅ Step 3: Location and phone received - Create incident
+          if (messageBody) {
+            // Extract phone number from the message using regex
+            const phoneMatch = messageBody.match(/(?:phone|tel|call|contact)?:?\s*([+0-9]{10,})/i);
+            const phoneNumber = phoneMatch ? phoneMatch[1] : null;
+            
+            let locationText = messageBody;
+            if (phoneMatch) {
+              locationText = messageBody.replace(phoneMatch[0], '').trim();
+            }
+            
+            const incident = await this.whatsappService.processCompleteReport({
+              from: fromNumber,
+              incidentType: session.incidentType,
+              title: session.title,
+              location: locationText || messageBody,
+              phoneNumber: phoneNumber || null,
+              mediaUrl: session.mediaUrl || mediaUrl || null,
+              mediaType: session.mediaType || mediaType || null,
+              profileName: profileName,
+            });
+            
+            await this.whatsappService.clearIncidentSession(fromNumber);
+            
+            const confirmMessage = 
+              `✅ *Incident Report Complete!*\n\n` +
+              `🆔 *ID:* ${incident.id.slice(0, 8)}\n` +
+              `📌 *Type:* ${session.incidentType.toUpperCase()}\n` +
+              `📍 *Location:* ${locationText}\n` +
+              `📸 *Photo:* ${session.mediaUrl ? '✅ Received' : '❌ No photo'}\n\n` +
+              `A responder will be assigned shortly.\n` +
+              `Track status: https://smartcityalert.com/track/${incident.id}`;
+            
+            await this.whatsappService.sendMessage(fromNumber, confirmMessage);
+            
+            return { 
+              status: 'success', 
+              incidentId: incident.id,
+              message: 'Incident created successfully'
+            };
+          }
+        }
+        
+        // ✅ Handle media-only messages (photo without text)
+        if (isMediaOnly && mediaUrl) {
+          const storedImage = await this.whatsappService.storePendingImage({
+            from: fromNumber,
+            mediaUrl: mediaUrl,
+            mediaType: mediaType,
+            profileName: profileName,
+          });
+          
+          return { 
+            status: 'pending', 
+            message: '📸 Image received. Please send a description or type HELP to start a report.',
+            imageId: storedImage.id,
+          };
+        }
+        
+        // ✅ Handle STATUS command
         if (messageBody.toLowerCase().startsWith('status') || 
             messageBody.toLowerCase().startsWith('track')) {
           const parts = messageBody.split(' ');
@@ -51,26 +216,7 @@ export class WhatsAppController {
           }
         }
         
-        // ✅ Handle media-only messages (photo without text)
-        if (isMediaOnly && mediaUrl) {
-          console.log('📸 Media-only message received (photo without text)');
-          
-          // Store the image temporarily and wait for text
-          const storedImage = await this.whatsappService.storePendingImage({
-            from: fromNumber,
-            mediaUrl: mediaUrl,
-            mediaType: mediaType,
-            profileName: profileName,
-          });
-          
-          return { 
-            status: 'pending', 
-            message: 'Image received. Please send a description of the incident.',
-            imageId: storedImage.id,
-          };
-        }
-        
-        // ✅ Handle normal messages (with text, with or without photo)
+        // ✅ Handle normal messages (with text and optional photo)
         if (messageBody) {
           const incident = await this.whatsappService.processAndCreateIncident({
             from: fromNumber,

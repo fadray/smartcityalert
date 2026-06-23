@@ -18,6 +18,9 @@ export class WhatsAppService {
   private twilioClient: any;
   private readonly baseUrl: string;
 
+  // Session storage (in production, use Redis or database)
+  private sessions: Map<string, any> = new Map();
+
   constructor(
     @InjectRepository(WhatsAppMessage)
     private whatsappRepo: Repository<WhatsAppMessage>,
@@ -41,6 +44,8 @@ export class WhatsAppService {
       this.logger.warn('Twilio credentials not found. Auto-reply will be in mock mode.');
     }
   }
+
+  // ==================== IMAGE HANDLING ====================
 
   /**
    * Download image from Twilio media URL
@@ -109,6 +114,43 @@ export class WhatsAppService {
     }
   }
 
+  // ==================== SESSION MANAGEMENT ====================
+
+  /**
+   * Store incident session for a user
+   */
+  async storeIncidentSession(phoneNumber: string, data: any): Promise<void> {
+    this.sessions.set(phoneNumber, {
+      ...data,
+      timestamp: Date.now(),
+    });
+    this.logger.log(`📝 Session stored for ${phoneNumber}: ${JSON.stringify(data)}`);
+  }
+
+  /**
+   * Get incident session for a user
+   */
+  async getIncidentSession(phoneNumber: string): Promise<any> {
+    const session = this.sessions.get(phoneNumber);
+    // Clear old sessions (older than 15 minutes)
+    if (session && Date.now() - session.timestamp > 15 * 60 * 1000) {
+      this.sessions.delete(phoneNumber);
+      this.logger.log(`⏰ Session expired for ${phoneNumber}`);
+      return null;
+    }
+    return session || null;
+  }
+
+  /**
+   * Clear incident session for a user
+   */
+  async clearIncidentSession(phoneNumber: string): Promise<void> {
+    this.sessions.delete(phoneNumber);
+    this.logger.log(`🗑️ Session cleared for ${phoneNumber}`);
+  }
+
+  // ==================== MESSAGING ====================
+
   /**
    * Send a WhatsApp message via Twilio
    */
@@ -138,6 +180,15 @@ export class WhatsAppService {
       throw error;
     }
   }
+
+  /**
+   * Send message (alias for sendWhatsAppMessage)
+   */
+  async sendMessage(to: string, message: string): Promise<any> {
+    return await this.sendWhatsAppMessage(to, message);
+  }
+
+  // ==================== AUTO-REPLY ====================
 
   /**
    * Send auto-reply to user confirming incident receipt
@@ -199,6 +250,11 @@ export class WhatsAppService {
     }
   }
 
+  // ==================== INCIDENT PROCESSING ====================
+
+  /**
+   * Process and create an incident from WhatsApp message
+   */
   async processAndCreateIncident(messageData: {
     from: string;
     body: string;
@@ -341,7 +397,134 @@ export class WhatsAppService {
     }
   }
 
-  // Store pending image (photo without text)
+  /**
+   * Process complete report with all steps (type, title, location, phone)
+   */
+  async processCompleteReport(data: {
+    from: string;
+    incidentType: string;
+    title: string;
+    location: string;
+    phoneNumber?: string;
+    mediaUrl?: string;
+    mediaType?: string;
+    profileName?: string;
+  }): Promise<any> {
+    this.logger.log(`📋 Processing complete report from ${data.from}`);
+    
+    // Find or create user
+    let user = await this.usersService.findByPhone(data.from);
+    if (!user) {
+      user = await this.usersService.createFromWhatsApp({
+        phone: data.from,
+        name: data.profileName || `WhatsApp User ${data.from.slice(-4)}`,
+        role: 'resident',
+      });
+    }
+    
+    // If phone number provided in location, create or update user
+    if (data.phoneNumber) {
+      const existingUser = await this.usersService.findByPhone(data.phoneNumber);
+      if (!existingUser) {
+        const newUser = await this.usersService.createFromWhatsApp({
+          phone: data.phoneNumber,
+          name: data.profileName || `WhatsApp User ${data.phoneNumber.slice(-4)}`,
+          role: 'resident',
+        });
+        this.logger.log(`📱 User created with provided phone: ${data.phoneNumber}`);
+      }
+    }
+    
+    // Download image if present
+    let imagePath: string | null = null;
+    let hasImage = false;
+    
+    if (data.mediaUrl) {
+      imagePath = await this.downloadImage(data.mediaUrl);
+      if (imagePath) hasImage = true;
+    }
+    
+    // Get department
+    let department: Department | null = null;
+    const departmentMap: Record<string, string> = {
+      fire: 'Fire Service',
+      medical: 'Health Services', 
+      security: 'Security',
+      maintenance: 'Maintenance',
+      traffic: 'Traffic Management',
+      flooding: 'Drainage Services',
+      general: 'Fire Service',
+    };
+    
+    const departmentName = departmentMap[data.incidentType];
+    if (departmentName) {
+      department = await this.departmentsService.findByName(departmentName);
+    }
+    
+    // Create incident
+    const imageUrls = imagePath ? [imagePath] : [];
+    const severityLevel = {
+      fire: 5,
+      medical: 5,
+      security: 4,
+      maintenance: 2,
+      traffic: 3,
+      flooding: 4,
+      general: 1,
+    }[data.incidentType] || 2;
+    
+    const incident = await this.incidentsService.create(
+      {
+        title: `${data.incidentType.toUpperCase()}: ${data.title}`,
+        description: `${data.title}\n\n📍 Location: ${data.location}\n📞 Phone: ${data.phoneNumber || 'Not provided'}`,
+        incident_type: data.incidentType,
+        department_id: department?.id || null,
+        severity_level: severityLevel,
+        latitude: 0,
+        longitude: 0,
+        location: data.location,
+      },
+      user.id,
+      imageUrls
+    );
+    
+    // Save WhatsApp message
+    const whatsappMsg = this.whatsappRepo.create({
+      from_number: data.from,
+      message_body: `${data.title}\n\n📍 Location: ${data.location}`,
+      media_url: data.mediaUrl,
+      media_type: data.mediaType,
+      status: 'processed',
+      detected_incident_type: data.incidentType,
+      extracted_data: {
+        type: data.incidentType,
+        title: data.title,
+        location: data.location,
+        phone: data.phoneNumber,
+        hasImage,
+      },
+      incident_id: incident.id,
+      processed_by_id: user.id,
+      twilio_metadata: {
+        profileName: data.profileName,
+        timestamp: new Date(),
+      },
+    });
+    
+    await this.whatsappRepo.save(whatsappMsg);
+    
+    // Send auto-reply
+    await this.sendAutoReply(data.from, incident, data.incidentType, hasImage);
+    
+    this.logger.log(`✅ Complete report processed: ${incident.id}`);
+    return incident;
+  }
+
+  // ==================== PENDING IMAGES ====================
+
+  /**
+   * Store pending image (photo without text)
+   */
   async storePendingImage(data: {
     from: string;
     mediaUrl: string;
@@ -349,7 +532,6 @@ export class WhatsAppService {
     profileName?: string;
   }): Promise<any> {
     const imagePath = await this.downloadImage(data.mediaUrl);
-    // Create with proper property names matching the entity
     const pendingImage = new PendingImage();
     pendingImage.from_number = data.from;
     pendingImage.media_url = data.mediaUrl;
@@ -362,7 +544,9 @@ export class WhatsAppService {
     return await this.pendingImageRepo.save(pendingImage);
   }
 
-  // Process pending image with text
+  /**
+   * Process pending image with text
+   */
   async processPendingImage(imageId: string, text: string): Promise<any> {
     const pendingImage = await this.pendingImageRepo.findOne({
       where: {
@@ -390,10 +574,11 @@ export class WhatsAppService {
     return incident;
   }
 
-  async sendMessage(to: string, message: string): Promise<any> {
-    return await this.sendWhatsAppMessage(to, message);
-  }
+  // ==================== STATUS CHECK ====================
 
+  /**
+   * Handle status check for an incident
+   */
   async handleStatusCheck(phoneNumber: string, incidentId: string): Promise<any> {
     const incident = await this.incidentsService.findOne(incidentId);
     if (!incident) {
