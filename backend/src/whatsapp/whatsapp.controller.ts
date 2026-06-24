@@ -1,5 +1,6 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, Logger } from '@nestjs/common';
 import { WhatsAppService } from './whatsapp.service';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('whatsapp')
 export class WhatsAppController {
@@ -162,7 +163,7 @@ export class WhatsAppController {
               `📍 *Location:* ${locationText}\n` +
               `📸 *Photo:* ${finalMediaUrl ? '✅ Received' : '❌ No photo'}\n\n` +
               `A responder will be assigned shortly.\n` +
-              `Track status: https://smartcityalert.com/track/${incident.id}`;
+              `Track status: https://smartalert-user.vercel.app/track/${incident.id}`;
             
             await this.whatsappService.sendMessage(fromNumber, confirmMessage);
             
