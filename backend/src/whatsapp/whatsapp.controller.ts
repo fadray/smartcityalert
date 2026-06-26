@@ -1,6 +1,5 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, Logger } from '@nestjs/common';
 import { WhatsAppService } from './whatsapp.service';
-import { ConfigService } from '@nestjs/config';
 
 @Controller('whatsapp')
 export class WhatsAppController {
@@ -11,7 +10,8 @@ export class WhatsAppController {
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
   async handleIncomingWebhook(@Body() payload: any) {
-    this.logger.log('WhatsApp webhook received');
+    const startTime = Date.now();
+    this.logger.log('📨 WhatsApp webhook received');
     
     try {
       if (payload.From) {
@@ -51,6 +51,8 @@ export class WhatsAppController {
             `📋 *GENERAL* - Other incidents\n\n` +
             `_Reply with the type (e.g., "FIRE") to start reporting_`;
           
+          // ✅ Clear any existing session before starting new one
+          await this.whatsappService.clearIncidentSession(fromNumber);
           await this.whatsappService.sendMessage(fromNumber, helpMessage);
           return { status: 'success', action: 'help' };
         }
@@ -63,6 +65,14 @@ export class WhatsAppController {
         );
         
         if (detectedType) {
+          this.logger.log(`📌 Type selected: ${detectedType} from ${fromNumber}`);
+          
+          await this.whatsappService.storeIncidentSession(fromNumber, {
+            step: 'awaiting_title',
+            incidentType: detectedType,
+            timestamp: Date.now(),
+          });
+          
           const titlePrompt = 
             `📍 *${detectedType.toUpperCase()} Report - Step 1/3*\n\n` +
             `Please describe the incident briefly:\n` +
@@ -71,39 +81,35 @@ export class WhatsAppController {
             `📸 You can also send a photo with your description.\n\n` +
             `Example: "Fire at Campground Zone B, smoke visible everywhere"`;
           
-          await this.whatsappService.storeIncidentSession(fromNumber, {
-            step: 'awaiting_title',
-            incidentType: detectedType,
-            timestamp: Date.now(),
-          });
-          
           await this.whatsappService.sendMessage(fromNumber, titlePrompt);
           return { status: 'success', action: 'type_selected', type: detectedType };
         }
         
-        // ✅ Get the current session
+        // ✅ Get the current session (FAST)
         const session = await this.whatsappService.getIncidentSession(fromNumber);
+        this.logger.log(`📋 Session for ${fromNumber}: step=${session?.step || 'none'}`);
         
-        // ✅ IMPORTANT: If there's a media URL and the user is in any step, store it in session
+        // ✅ If there's a media URL and session exists, update it
         if (mediaUrl && session) {
-          this.logger.log(`📸 Storing media URL in session for ${fromNumber}: ${mediaUrl}`);
           session.mediaUrl = mediaUrl;
           session.mediaType = mediaType;
           await this.whatsappService.storeIncidentSession(fromNumber, session);
-          
-          // If this is a media-only message, acknowledge it
-          if (isMediaOnly) {
-            await this.whatsappService.sendMessage(
-              fromNumber, 
-              `📸 *Image received!*\n\nPlease continue with your report.`
-            );
-            return { status: 'pending', message: 'Image stored, waiting for text' };
-          }
+          this.logger.log(`📸 Media stored in session for ${fromNumber}`);
         }
         
+        // ✅ Handle awaiting title (Step 2)
         if (session && session.step === 'awaiting_title') {
-          // ✅ Step 2: Incident Title received
+          if (isMediaOnly && mediaUrl) {
+            await this.whatsappService.sendMessage(
+              fromNumber, 
+              `📸 *Image received!*\n\nPlease send the incident description.`
+            );
+            return { status: 'pending', message: 'Image received, waiting for text' };
+          }
+          
           if (messageBody) {
+            this.logger.log(`📝 Title received from ${fromNumber}: ${messageBody.substring(0, 50)}...`);
+            
             session.step = 'awaiting_location';
             session.title = messageBody;
             await this.whatsappService.storeIncidentSession(fromNumber, session);
@@ -123,9 +129,23 @@ export class WhatsAppController {
           }
         }
         
-        // ✅ Check if awaiting location
+        // ✅ Handle awaiting location (Step 3) - THIS IS THE SLOW STEP
         if (session && session.step === 'awaiting_location') {
-          // ✅ Step 3: Location and phone received - Create incident
+          this.logger.log(`📍 Location received from ${fromNumber}: ${messageBody.substring(0, 50)}...`);
+          this.logger.log(`⏱️ Processing started at: ${new Date().toISOString()}`);
+          
+          if (isMediaOnly && mediaUrl) {
+            session.mediaUrl = mediaUrl;
+            session.mediaType = mediaType;
+            await this.whatsappService.storeIncidentSession(fromNumber, session);
+            
+            await this.whatsappService.sendMessage(
+              fromNumber, 
+              `📸 *Image received!*\n\nPlease send the location details.`
+            );
+            return { status: 'pending', message: 'Image received, waiting for location' };
+          }
+          
           if (messageBody) {
             // Extract phone number
             const phoneMatch = messageBody.match(/(?:phone|tel|call|contact)?:?\s*([+0-9]{10,})/i);
@@ -136,13 +156,12 @@ export class WhatsAppController {
               locationText = messageBody.replace(phoneMatch[0], '').trim();
             }
             
-            // ✅ Get the media URL from the session (it was stored when the image was received)
             const finalMediaUrl = session.mediaUrl || mediaUrl || null;
             const finalMediaType = session.mediaType || mediaType || null;
             
-            this.logger.log(`📸 Final media URL: ${finalMediaUrl || 'NONE'}`);
-            this.logger.log(`📸 Session media URL: ${session.mediaUrl || 'NONE'}`);
+            this.logger.log(`📸 Creating incident with media: ${finalMediaUrl ? 'YES' : 'NO'}`);
             
+            // ✅ Process the incident (this is where the delay happens)
             const incident = await this.whatsappService.processCompleteReport({
               from: fromNumber,
               incidentType: session.incidentType,
@@ -154,6 +173,10 @@ export class WhatsAppController {
               profileName: profileName,
             });
             
+            const elapsedTime = Date.now() - startTime;
+            this.logger.log(`✅ Incident created in ${elapsedTime}ms: ${incident.id}`);
+            
+            // ✅ Clear session after successful creation
             await this.whatsappService.clearIncidentSession(fromNumber);
             
             const confirmMessage = 
@@ -170,17 +193,16 @@ export class WhatsAppController {
             return { 
               status: 'success', 
               incidentId: incident.id,
-              message: 'Incident created successfully'
+              message: 'Incident created successfully',
+              elapsedMs: elapsedTime,
             };
           }
         }
         
-        // ✅ Handle media-only messages (photo without text) - no session yet
+        // ✅ Handle media-only messages (photo without text)
         if (isMediaOnly && mediaUrl) {
-          // Check if there's a session, if not, create one
           let existingSession = await this.whatsappService.getIncidentSession(fromNumber);
           if (!existingSession) {
-            // Create a new session with just the image
             await this.whatsappService.storeIncidentSession(fromNumber, {
               step: 'awaiting_title',
               mediaUrl: mediaUrl,
@@ -192,7 +214,6 @@ export class WhatsAppController {
               `📸 *Image received!*\n\nPlease type HELP to select an incident type, or send a description.`
             );
           } else {
-            // Update existing session with image
             existingSession.mediaUrl = mediaUrl;
             existingSession.mediaType = mediaType;
             await this.whatsappService.storeIncidentSession(fromNumber, existingSession);
@@ -215,7 +236,7 @@ export class WhatsAppController {
           }
         }
         
-        // ✅ Handle normal messages (with text and optional photo)
+        // ✅ Handle normal messages
         if (messageBody) {
           const incident = await this.whatsappService.processAndCreateIncident({
             from: fromNumber,

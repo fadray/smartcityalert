@@ -580,6 +580,7 @@ export class WhatsAppService {
   /**
    * Process complete report with all steps (type, title, location, phone)
    */
+  
   async processCompleteReport(data: {
     from: string;
     incidentType: string;
@@ -590,10 +591,10 @@ export class WhatsAppService {
     mediaType?: string;
     profileName?: string;
   }): Promise<any> {
+    const startTime = Date.now();
     this.logger.log(`📋 Processing complete report from ${data.from}`);
-    this.logger.log(`📸 Media URL present: ${!!data.mediaUrl}`);
     
-    // Find or create user
+    // ✅ Find or create user (fast)
     let user = await this.usersService.findByPhone(data.from);
     if (!user) {
       user = await this.usersService.createFromWhatsApp({
@@ -603,20 +604,7 @@ export class WhatsAppService {
       });
     }
     
-    // If phone number provided in location, create or update user
-    if (data.phoneNumber) {
-      const existingUser = await this.usersService.findByPhone(data.phoneNumber);
-      if (!existingUser) {
-        const newUser = await this.usersService.createFromWhatsApp({
-          phone: data.phoneNumber,
-          name: data.profileName || `WhatsApp User ${data.phoneNumber.slice(-4)}`,
-          role: 'resident',
-        });
-        this.logger.log(`📱 User created with provided phone: ${data.phoneNumber}`);
-      }
-    }
-    
-    // ✅ Download image if present
+    // ✅ Download image if present (this is the slowest part)
     let imagePath: string | null = null;
     let hasImage = false;
     let imageUrls: string[] = [];
@@ -628,15 +616,10 @@ export class WhatsAppService {
         hasImage = true;
         imageUrls = [imagePath];
         this.logger.log(`✅ Image saved: ${imagePath}`);
-      } else {
-        this.logger.warn('❌ Failed to download image - continuing without image');
-        imageUrls = [];
       }
-    } else {
-      this.logger.log('ℹ️ No image URL provided in request');
     }
     
-    // Get department
+    // ✅ Get department (fast)
     let department: Department | null = null;
     const departmentMap: Record<string, string> = {
       fire: 'Fire Service',
@@ -653,7 +636,7 @@ export class WhatsAppService {
       department = await this.departmentsService.findByName(departmentName);
     }
     
-    // ✅ Create incident with image
+    // ✅ Create incident (fast)
     const severityLevel = {
       fire: 5,
       medical: 5,
@@ -678,10 +661,10 @@ export class WhatsAppService {
         location: data.location,
       },
       user.id,
-      imageUrls  // ✅ Pass the image URLs array
+      imageUrls
     );
     
-    // Save WhatsApp message
+    // ✅ Save WhatsApp message (fast)
     const whatsappMsg = this.whatsappRepo.create({
       from_number: data.from,
       message_body: `${data.title}\n\n📍 Location: ${data.location}`,
@@ -707,10 +690,12 @@ export class WhatsAppService {
     
     await this.whatsappRepo.save(whatsappMsg);
     
-    // ✅ Send auto-reply with image confirmation
+    // ✅ Send auto-reply (fast)
     await this.sendAutoReply(data.from, incident, data.incidentType, hasImage);
     
-    this.logger.log(`✅ Complete report processed: ${incident.id} with ${imageUrls.length} image(s)`);
+    const elapsedTime = Date.now() - startTime;
+    this.logger.log(`✅ Complete report processed: ${incident.id} in ${elapsedTime}ms with ${imageUrls.length} image(s)`);
+    
     return incident;
   }
 
