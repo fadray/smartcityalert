@@ -305,25 +305,196 @@ export class WhatsAppService {
       let severity = 1;
       const body = messageData.body.toLowerCase();
       
-      if (body.includes('fire') || body.includes('burning') || body.includes('smoke')) {
-        incidentType = 'fire';
-        severity = 5;
-      } else if (body.includes('medical') || body.includes('injury') || body.includes('ambulance') || body.includes('collapsed')) {
-        incidentType = 'medical';
-        severity = 5;
-      } else if (body.includes('theft') || body.includes('robbery') || body.includes('suspicious')) {
-        incidentType = 'security';
-        severity = 4;
-      } else if (body.includes('road') || body.includes('light') || body.includes('drainage') || body.includes('power') || body.includes('electricity')) {
-        incidentType = 'infrastructure';
-        severity = 2;
-      } else if (body.includes('traffic') || body.includes('congestion') || body.includes('jam')) {
-        incidentType = 'traffic';
-        severity = 3;
-      } else if (body.includes('flood') || body.includes('water logging') || body.includes('drainage blocked')) {
-        incidentType = 'flooding';
-        severity = 4;
-      }
+  if (
+  body.includes('fire') ||
+  body.includes('burning') ||
+  body.includes('burn') ||
+  body.includes('smoke') ||
+  body.includes('flames') ||
+  body.includes('explosion') ||
+  body.includes('blast') ||
+  body.includes('gas leak') ||
+  body.includes('gas explosion') ||
+  body.includes('spark') ||
+  body.includes('inferno')
+) {
+  incidentType = 'fire';
+  severity = 5;
+
+} else if (
+  body.includes('medical') ||
+  body.includes('injury') ||
+  body.includes('injured') ||
+  body.includes('ambulance') ||
+  body.includes('collapsed') ||
+  body.includes('collapse') ||
+  body.includes('fainted') ||
+  body.includes('faint') ||
+  body.includes('unconscious') ||
+  body.includes('bleeding') ||
+  body.includes('blood') ||
+  body.includes('heart attack') ||
+  body.includes('stroke') ||
+  body.includes('breathing') ||
+  body.includes('breathe') ||
+  body.includes('breathing') ||
+  body.includes('die') ||
+  body.includes('dead') ||
+  body.includes('death') ||
+  body.includes('sick') ||
+  body.includes('critical') ||
+  body.includes('emergency') ||
+  body.includes('poison') ||
+  body.includes('poisoning') ||
+  body.includes('overdose') ||
+  body.includes('pregnant') ||
+  body.includes('labour') ||
+  body.includes('labor') ||
+  body.includes('delivery') ||
+  body.includes('fell') ||
+  body.includes('fall') ||
+  body.includes('accident') ||
+  body.includes('crash')
+) {
+  incidentType = 'medical';
+  severity = 5;
+
+} else if (
+  body.includes('theft') ||
+  body.includes('thief') ||
+  body.includes('thieves') ||
+  body.includes('robbery') ||
+  body.includes('robber') ||
+  body.includes('robbers') ||
+  body.includes('armed') ||
+  body.includes('armed robbery') ||
+  body.includes('suspicious') ||
+  body.includes('stealing') ||
+  body.includes('stolen') ||
+  body.includes('kidnap') ||
+  body.includes('kidnapped') ||
+  body.includes('abduction') ||
+  body.includes('abducted') ||
+  body.includes('gun') ||
+  body.includes('gunshot') ||
+  body.includes('shot') ||
+  body.includes('shoot') ||
+  body.includes('shooting') ||
+  body.includes('knife') ||
+  body.includes('machete') ||
+  body.includes('cultist') ||
+  body.includes('cult') ||
+  body.includes('violence') ||
+  body.includes('fight') ||
+  body.includes('beating') ||
+  body.includes('assault') ||
+  body.includes('attack') ||
+  body.includes('harassment') ||
+  body.includes('rape') ||
+  body.includes('molest') ||
+  body.includes('terrorist') ||
+  body.includes('bomb') ||
+  body.includes('hostage') ||
+  body.includes('break in') ||
+  body.includes('burglary') ||
+  body.includes('breaking')
+) {
+  incidentType = 'security';
+  severity = 4;
+
+} else if (
+  body.includes('road') ||
+  body.includes('pothole') ||
+  body.includes('bridge') ||
+  body.includes('street light') ||
+  body.includes('traffic light') ||
+  body.includes('light') ||
+  body.includes('drainage') ||
+  body.includes('gutter') ||
+  body.includes('power') ||
+  body.includes('electricity') ||
+  body.includes('transformer') ||
+  body.includes('pole') ||
+  body.includes('cable') ||
+  body.includes('wire') ||
+  body.includes('fallen pole') ||
+  body.includes('streetlight') ||
+  body.includes('generator') ||
+  body.includes('water pipe') ||
+  body.includes('pipe burst') ||
+  body.includes('manhole')
+) {
+  incidentType = 'infrastructure';
+  severity = 2;
+
+} else if (
+  body.includes('traffic') ||
+  body.includes('congestion') ||
+  body.includes('jam') ||
+  body.includes('gridlock') ||
+  body.includes('blocked road') ||
+  body.includes('road blocked') ||
+  body.includes('vehicle breakdown') ||
+  body.includes('truck') ||
+  body.includes('trailer') ||
+  body.includes('accident causing traffic')
+) {
+  incidentType = 'traffic';
+  severity = 3;
+
+} else if (
+  body.includes('flood') ||
+  body.includes('flooding') ||
+  body.includes('water logging') ||
+  body.includes('waterlogged') ||
+  body.includes('drainage blocked') ||
+  body.includes('overflow') ||
+  body.includes('overflowing') ||
+  body.includes('erosion') ||
+  body.includes('pipe burst') ||
+  body.includes('burst pipe') ||
+  body.includes('tank overflow') ||
+  body.includes('swamp') ||
+  body.includes('heavy rain') ||
+  body.includes('rainwater') ||
+  body.includes('submerged')
+) {
+  incidentType = 'flooding';
+  severity = 4;
+
+} else if (
+  body.includes('tree fell') ||
+  body.includes('fallen tree') ||
+  body.includes('tree blocking') ||
+  body.includes('windstorm') ||
+  body.includes('storm') ||
+  body.includes('thunderstorm')
+) {
+  incidentType = 'environment';
+  severity = 3;
+
+} else if (
+  body.includes('lost child') ||
+  body.includes('missing child') ||
+  body.includes('missing person') ||
+  body.includes('person missing')
+) {
+  incidentType = 'missing_person';
+  severity = 5;
+
+} else if (
+  body.includes('animal') ||
+  body.includes('snake') ||
+  body.includes('dog bite') ||
+  body.includes('monkey') ||
+  body.includes('cow') ||
+  body.includes('goat') ||
+  body.includes('wild animal')
+) {
+  incidentType = 'medical';
+  severity = 3;
+
+}
       
       // Get department
       let department: Department | null = null;
